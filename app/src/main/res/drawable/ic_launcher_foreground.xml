@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Automation switch outer capsule -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FAFFA7"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M38,36 h32 a18,18 0 0,1 18,18 a18,18 0 0,1 -18,18 h-32 a18,18 0 0,1 -18,-18 a18,18 0 0,1 18,-18 z" />
+
+    <!-- Active switch circle (right side) -->
+    <path
+        android:fillColor="#FAFFA7"
+        android:pathData="M70,54 m-11,0 a11,11 0 1,0 22,0 a11,11 0 1,0 -22,0" />
+
+    <!-- Trigger node connection branch (left) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#F2EEE7"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M38,54 L24,54" />
+
+    <!-- Left trigger dot -->
+    <path
+        android:fillColor="#E6B800"
+        android:pathData="M24,54 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0" />
+
+    <!-- Output action arrow line (top right) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FAFFA7"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M70,36 L70,26 M66,30 L70,26 L74,30" />
+
+    <!-- Lightning spark / instant control icon inside the active toggle -->
+    <path
+        android:fillColor="#4D1520"
+        android:pathData="M71,48 L66,54.5 L69.5,54.5 L69,60 L74,53.5 L70.5,53.5 Z" />
+
+    <!-- "C T R L" text indication in clean geometric shapes below -->
+    <path
+        android:fillColor="#F2EEE7"
+        android:pathData="M36,80 h-4 a4,4 0 0,1 -4,-4 v0 a4,4 0 0,1 4,-4 h4 v2 h-4 a2,2 0 0,0 -2,2 v0 a2,2 0 0,0 2,2 h4 z" />
+    <path
+        android:fillColor="#F2EEE7"
+        android:pathData="M44,72 h8 v2 h-3 v6 h-2 v-6 h-3 z" />
+    <path
+        android:fillColor="#F2EEE7"
+        android:pathData="M58,72 h5 a3,3 0 0,1 3,3 c0,1.2 -0.8,2.2 -1.8,2.7 l2.2,2.3 h-2.5 l-2,-2.2 h-1.9 v2.2 h-2 z M60,74 v2.2 h3 a1.1,1.1 0 0,0 1.1,-1.1 v0 a1.1,1.1 0 0,0 -1.1,-1.1 z" />
+    <path
+        android:fillColor="#F2EEE7"
+        android:pathData="M72,72 h2 v6 h5 v2 h-7 z" />
+</vector>

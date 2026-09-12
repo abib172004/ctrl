@@ -1,0 +1,6 @@
+{
+  "name": "Ctrl",
+  "description": "Outil d'automatisation Android natif avancé avec déclencheurs, conditions et actions puissants",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

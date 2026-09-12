@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Ctrl</string>
+    <string name="accessibility_service_description">Service d\'automatisation Ctrl permettant d\'interagir avec l\'interface utilisateur et d\'exécuter des actions d\'automatisation configurées.</string>
+    <string name="accessibility_service_label">Service d\'automatisation Ctrl</string>
+</resources>
