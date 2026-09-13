@@ -1528,7 +1528,7 @@ private fun CatalogueActionsDialog(
             ActionPreset("open_url", "Ouvrir un Site Web", Icons.Default.Language, "Applications & Web", ActionConfigType.URL, ActionMacro.OuvrirUrl("https://google.com")),
             ActionPreset("call", "Passer un Appel", Icons.Default.Call, "Applications & Web", null, ActionMacro.PasserAppel("0600000000")),
             ActionPreset("open_call_log", "Ouvrir le Journal d'Appels", Icons.Default.History, "Applications & Web", null, ActionMacro.OuvrirJournalAppels()),
-            ActionPreset("share_text", "Partager du Texte", Icons.AutoMirrored.Filled.Send, "Applications & Web", null, ActionMacro.PartagerTexte("Partagé depuis Ctrl")),
+            ActionPreset("share_text", "Partager du Texte", Icons.Default.Share, "Applications & Web", null, ActionMacro.PartagerTexte("Partagé depuis Ctrl")),
             ActionPreset("clipboard_fill", "Remplir le Presse-Papier", Icons.Default.ContentPaste, "Applications & Web", null, ActionMacro.RemplirPressePapier("")),
             ActionPreset("send_intent", "Envoyer un Intent", Icons.Default.Send, "Applications & Web", null, ActionMacro.EnvoyerIntent(action = "android.intent.action.VIEW")),
             ActionPreset("http_request", "Requête HTTP", Icons.Default.Http, "Applications & Web", null, ActionMacro.RequeteHttp(url = "https://", methode = MethodeHttp.GET)),

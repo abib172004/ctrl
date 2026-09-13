@@ -756,14 +756,14 @@ private fun getActionIcon(action: ActionMacro): ImageVector {
         is ActionMacro.OuvrirUrl -> Icons.Outlined.Language
         is ActionMacro.TexteParSyntheseVocale -> Icons.Outlined.RecordVoiceOver
         is ActionMacro.PasserAppel -> Icons.Outlined.Call
-        is ActionMacro.PartagerTexte -> Icons.AutoMirrored.Outlined.Send
+        is ActionMacro.PartagerTexte -> Icons.Outlined.Share
         is ActionMacro.RemplirPressePapier -> Icons.Outlined.ContentPaste
         is ActionMacro.EnvoyerIntent -> Icons.Outlined.Send
         is ActionMacro.RequeteHttp -> Icons.Outlined.Http
         is ActionMacro.AnalyseJson -> Icons.Outlined.DataObject
         is ActionMacro.EffacerNotifications -> Icons.Outlined.ClearAll
         is ActionMacro.OuvrirJournalAppels -> Icons.Outlined.History
-        is ActionMacro.ManipulerListe -> Icons.AutoMirrored.Outlined.List
+        is ActionMacro.ManipulerListe -> Icons.Outlined.List
         is ActionMacro.VerifierTexteEcran -> Icons.Outlined.FindInPage
         else -> Icons.Outlined.CheckCircle
     }

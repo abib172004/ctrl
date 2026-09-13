@@ -16,41 +16,68 @@ import kotlinx.coroutines.withContext
  */
 class OcrEngine {
 
-    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private val recognizer by lazy {
+        try {
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     /**
      * Analyse une image Bitmap (capture d'écran) et extrait le texte structuré via ML Kit
      */
     suspend fun reconnaitreTexte(bitmap: Bitmap): ResultatOcr = withContext(Dispatchers.Default) {
-        val deferred = CompletableDeferred<ResultatOcr>()
-        val inputImage = InputImage.fromBitmap(bitmap, 0)
+        val client = recognizer
+        if (client == null) {
+            return@withContext ResultatOcr(
+                texteComplet = "",
+                lignes = emptyList(),
+                nbBlocs = 0,
+                erreur = "Module OCR indisponible"
+            )
+        }
 
-        recognizer.process(inputImage)
-            .addOnSuccessListener { visionText ->
-                val lignes = mutableListOf<String>()
-                for (bloc in visionText.textBlocks) {
-                    for (ligne in bloc.lines) {
-                        lignes.add(ligne.text)
+        val deferred = CompletableDeferred<ResultatOcr>()
+        try {
+            val inputImage = InputImage.fromBitmap(bitmap, 0)
+
+            client.process(inputImage)
+                .addOnSuccessListener { visionText ->
+                    val lignes = mutableListOf<String>()
+                    for (bloc in visionText.textBlocks) {
+                        for (ligne in bloc.lines) {
+                            lignes.add(ligne.text)
+                        }
                     }
+                    deferred.complete(
+                        ResultatOcr(
+                            texteComplet = visionText.text,
+                            lignes = lignes,
+                            nbBlocs = visionText.textBlocks.size
+                        )
+                    )
                 }
-                deferred.complete(
-                    ResultatOcr(
-                        texteComplet = visionText.text,
-                        lignes = lignes,
-                        nbBlocs = visionText.textBlocks.size
+                .addOnFailureListener { e ->
+                    deferred.complete(
+                        ResultatOcr(
+                            texteComplet = "",
+                            lignes = emptyList(),
+                            nbBlocs = 0,
+                            erreur = e.message
+                        )
                     )
+                }
+        } catch (e: Exception) {
+            deferred.complete(
+                ResultatOcr(
+                    texteComplet = "",
+                    lignes = emptyList(),
+                    nbBlocs = 0,
+                    erreur = e.message
                 )
-            }
-            .addOnFailureListener { e ->
-                deferred.complete(
-                    ResultatOcr(
-                        texteComplet = "",
-                        lignes = emptyList(),
-                        nbBlocs = 0,
-                        erreur = e.message
-                    )
-                )
-            }
+            )
+        }
 
         deferred.await()
     }

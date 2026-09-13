@@ -19,6 +19,8 @@ import com.example.presentation.dashboard.DashboardScreen
 import com.example.presentation.dashboard.DashboardViewModel
 import com.example.presentation.journal.JournalScreen
 import com.example.presentation.journal.JournalViewModel
+import com.example.presentation.macros.MacrosScreen
+import com.example.presentation.macros.MacrosViewModel
 import com.example.presentation.macrobuilder.MacroBuilderScreen
 import com.example.presentation.macrobuilder.MacroBuilderViewModel
 import com.example.presentation.macrodetail.MacroDetailScreen
@@ -33,6 +35,7 @@ import com.example.service.CtrlForegroundService
 class MainActivity : ComponentActivity() {
 
     private val dashboardViewModel: DashboardViewModel by viewModels()
+    private val macrosViewModel: MacrosViewModel by viewModels()
     private val macroBuilderViewModel: MacroBuilderViewModel by viewModels()
     private val aiGeneratorViewModel: AiGeneratorViewModel by viewModels()
     private val journalViewModel: JournalViewModel by viewModels()
@@ -96,13 +99,22 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onMacroDetailClick = { macroId ->
                                     navController.navigate("macro_detail/$macroId")
+                                },
+                                onNavigateToMacros = {
+                                    navController.navigate(NavDestination.MACROS.route)
+                                },
+                                onNavigateToAi = {
+                                    navController.navigate(NavDestination.IA.route)
+                                },
+                                onNavigateToJournal = {
+                                    navController.navigate(NavDestination.JOURNAL.route)
                                 }
                             )
                         }
 
                         composable(NavDestination.MACROS.route) {
-                            DashboardScreen(
-                                viewModel = dashboardViewModel,
+                            MacrosScreen(
+                                viewModel = macrosViewModel,
                                 onCreateMacroClick = {
                                     macroBuilderViewModel.reset()
                                     navController.navigate("create_macro")

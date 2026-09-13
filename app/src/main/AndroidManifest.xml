@@ -47,6 +47,11 @@
             </intent-filter>
         </activity>
 
+        <!-- ML Kit model preloading hint -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr" />
+
         <!-- Ctrl Accessibility Service -->
         <service
             android:name=".data.accessibility.CtrlAccessibilityService"

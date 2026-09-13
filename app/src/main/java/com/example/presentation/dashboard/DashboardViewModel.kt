@@ -11,16 +11,20 @@ import com.example.data.repository.VariableRepositoryImpl
 import com.example.domain.model.Macro
 import com.example.domain.usecase.EvaluerConditionsUseCase
 import com.example.domain.usecase.ExecuterMacroUseCase
+import com.example.domain.model.LogEntry
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 data class DashboardUiState(
     val macros: List<Macro> = emptyList(),
+    val recentLogs: List<LogEntry> = emptyList(),
     val searchQuery: String = "",
     val isAccessibilityEnabled: Boolean = false,
     val isLoading: Boolean = false,
     val testFeedbackMessage: String? = null
 ) {
+    val macrosActives: List<Macro> get() = macros.filter { it.active }
+
     val macrosFiltrees: List<Macro>
         get() = if (searchQuery.isBlank()) {
             macros
@@ -63,7 +67,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         chargerMacros()
+        chargerLogsRecents()
         verifierAccessibilite()
+    }
+
+    private fun chargerLogsRecents() {
+        viewModelScope.launch {
+            logRepository.getLogs().collect { logs ->
+                _uiState.update { it.copy(recentLogs = logs.take(6)) }
+            }
+        }
     }
 
     fun verifierAccessibilite() {
