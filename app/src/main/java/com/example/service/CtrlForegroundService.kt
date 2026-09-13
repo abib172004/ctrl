@@ -28,6 +28,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.HandlerThread
 import android.provider.Telephony
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -36,6 +37,7 @@ import com.example.data.local.room.CtrlDatabase
 import com.example.data.repository.LogRepositoryImpl
 import com.example.data.repository.MacroRepositoryImpl
 import com.example.data.repository.VariableRepositoryImpl
+import com.example.domain.model.Macro
 import com.example.domain.model.Trigger
 import com.example.domain.usecase.EvaluerConditionsUseCase
 import com.example.domain.usecase.ExecuterMacroUseCase
@@ -68,6 +70,17 @@ class CtrlForegroundService : Service(), SensorEventListener {
     private var lightSensor: Sensor? = null
     private var proximitySensor: Sensor? = null
     private var lastShakeTime = 0L
+
+    private var sensorThread: HandlerThread? = null
+    private var sensorHandler: Handler? = null
+    private var isAccelerometerRegistered = false
+    private var isLightRegistered = false
+    private var isProxRegistered = false
+    private var dernierCheckLumiereMs = 0L
+
+    // Cache mémoire ultra-rapide des macros actives pour éviter tout blocage du Main Thread
+    @Volatile
+    private var macrosActivesCache: List<Macro> = emptyList()
 
     // États "dernière valeur connue" pour déclenchement sur front (evite le spam de macros
     // sur des événements système qui peuvent se répéter en continu à état inchangé).
@@ -111,8 +124,20 @@ class CtrlForegroundService : Service(), SensorEventListener {
         val notification = creerNotification()
         startForeground(NOTIFICATION_ID, notification)
 
-        enregistrerReceiversSysteme()
         initialiserCapteurs()
+
+        // Abonnement réactif pour synchroniser le cache mémoire et adapter l'écoute des capteurs
+        serviceScope.launch {
+            try {
+                macroRepo.getMacros().collect { liste ->
+                    val actives = liste.filter { it.active }
+                    macrosActivesCache = actives
+                    actualiserEcouteursCapteurs(actives)
+                }
+            } catch (_: Exception) {}
+        }
+
+        enregistrerReceiversSysteme()
         initialiserCallbackTorche()
         initialiserCallbackVpn()
         initialiserEcouteurPressePapier()
@@ -134,7 +159,7 @@ class CtrlForegroundService : Service(), SensorEventListener {
         if (lastOrientationPortrait != portrait) {
             lastOrientationPortrait = portrait
             serviceScope.launch {
-                val macros = macroRepo.getMacros().first().filter { it.active }
+                val macros = macrosActivesCache
                 macros.filter { it.trigger is Trigger.OrientationEcran && (it.trigger as Trigger.OrientationEcran).portrait == portrait }
                     .forEach { executerUseCase.executer(it) }
             }
@@ -169,15 +194,55 @@ class CtrlForegroundService : Service(), SensorEventListener {
     private fun initialiserCapteurs() {
         try {
             sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
-            accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            accelerometer?.let { sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
-
-            lightSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_LIGHT)
-            lightSensor?.let { sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
-
-            proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
-            proximitySensor?.let { sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            // CRITIQUE : Déporter la réception des capteurs sur un thread d'arrière-plan dédié
+            sensorThread = HandlerThread("CtrlSensorThread").apply { start() }
+            sensorHandler = Handler(sensorThread!!.looper)
         } catch (_: Exception) {}
+    }
+
+    private fun actualiserEcouteursCapteurs(actives: List<Macro>) {
+        val sm = sensorManager ?: return
+        val handler = sensorHandler ?: return
+
+        val needsShake = actives.any { it.trigger is Trigger.Secousse }
+        val needsLight = actives.any { it.trigger is Trigger.CapteurLuminosite }
+        val needsProx = actives.any { it.trigger is Trigger.CapteurProximite }
+
+        // Accéléromètre : actif uniquement si une macro 'Secousse' est active
+        if (needsShake && !isAccelerometerRegistered) {
+            accelerometer = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+            accelerometer?.let {
+                sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, handler)
+                isAccelerometerRegistered = true
+            }
+        } else if (!needsShake && isAccelerometerRegistered) {
+            accelerometer?.let { sm.unregisterListener(this, it) }
+            isAccelerometerRegistered = false
+        }
+
+        // Capteur de luminosité : actif uniquement si nécessaire
+        if (needsLight && !isLightRegistered) {
+            lightSensor = sm.getDefaultSensor(Sensor.TYPE_LIGHT)
+            lightSensor?.let {
+                sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, handler)
+                isLightRegistered = true
+            }
+        } else if (!needsLight && isLightRegistered) {
+            lightSensor?.let { sm.unregisterListener(this, it) }
+            isLightRegistered = false
+        }
+
+        // Capteur de proximité : actif uniquement si nécessaire
+        if (needsProx && !isProxRegistered) {
+            proximitySensor = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+            proximitySensor?.let {
+                sm.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL, handler)
+                isProxRegistered = true
+            }
+        } else if (!needsProx && isProxRegistered) {
+            proximitySensor?.let { sm.unregisterListener(this, it) }
+            isProxRegistered = false
+        }
     }
 
     /** CameraManager.TorchCallback est une API publique (API 23+), aucune permission requise. */
@@ -302,7 +367,7 @@ class CtrlForegroundService : Service(), SensorEventListener {
             val actif = methode.invoke(wifiManager) as? Boolean ?: return
             if (lastHotspotActif != actif) {
                 lastHotspotActif = actif
-                val macros = macroRepo.getMacros().first().filter { it.active }
+                val macros = macrosActivesCache
                 macros.filter { it.trigger is Trigger.HotspotState && (it.trigger as Trigger.HotspotState).actif == actif }
                     .forEach { executerUseCase.executer(it) }
             }
@@ -312,7 +377,7 @@ class CtrlForegroundService : Service(), SensorEventListener {
     }
 
     private suspend fun declencherMacrosPourAction(action: String, intent: Intent) {
-        val macros = macroRepo.getMacros().first().filter { it.active }
+        val macros = macrosActivesCache
 
         when (action) {
             Intent.ACTION_SCREEN_ON -> {
@@ -399,22 +464,23 @@ class CtrlForegroundService : Service(), SensorEventListener {
                     if (now - lastShakeTime > 1500L) { // Anti-rebond
                         lastShakeTime = now
                         serviceScope.launch {
-                            val macros = macroRepo.getMacros().first().filter { it.active }
-                            macros.filter { it.trigger is Trigger.Secousse }.forEach {
-                                executerUseCase.executer(it)
-                            }
+                            val macros = macrosActivesCache.filter { it.trigger is Trigger.Secousse }
+                            macros.forEach { executerUseCase.executer(it) }
                         }
                     }
                 }
             }
 
             Sensor.TYPE_LIGHT -> {
-                val lux = evt.values[0]
-                serviceScope.launch {
-                    val macros = macroRepo.getMacros().first().filter { it.active }
-                    for (m in macros) {
-                        val t = m.trigger
-                        if (t is Trigger.CapteurLuminosite) {
+                val now = System.currentTimeMillis()
+                // Throttling à 1s pour le capteur de lumière
+                if (now - dernierCheckLumiereMs >= 1000L) {
+                    dernierCheckLumiereMs = now
+                    val lux = evt.values[0]
+                    serviceScope.launch {
+                        val macros = macrosActivesCache.filter { it.trigger is Trigger.CapteurLuminosite }
+                        for (m in macros) {
+                            val t = m.trigger as Trigger.CapteurLuminosite
                             val depasse = if (t.inferieur) lux < t.seuilLux else lux > t.seuilLux
                             val etaitDepasse = etatLuminositeDepasse[m.id] ?: false
                             if (depasse && !etaitDepasse) {
@@ -431,9 +497,8 @@ class CtrlForegroundService : Service(), SensorEventListener {
                 if (lastProximityProche != proche) {
                     lastProximityProche = proche
                     serviceScope.launch {
-                        val macros = macroRepo.getMacros().first().filter { it.active }
-                        macros.filter { it.trigger is Trigger.CapteurProximite && (it.trigger as Trigger.CapteurProximite).proche == proche }
-                            .forEach { executerUseCase.executer(it) }
+                        val macros = macrosActivesCache.filter { it.trigger is Trigger.CapteurProximite && (it.trigger as Trigger.CapteurProximite).proche == proche }
+                        macros.forEach { executerUseCase.executer(it) }
                     }
                 }
             }
@@ -446,6 +511,7 @@ class CtrlForegroundService : Service(), SensorEventListener {
         super.onDestroy()
         try { unregisterReceiver(dynamicSystemReceiver) } catch (_: Exception) {}
         sensorManager?.unregisterListener(this)
+        sensorThread?.quitSafely()
         try { torchCallback?.let { cameraManager?.unregisterTorchCallback(it) } } catch (_: Exception) {}
         try { networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) } } catch (_: Exception) {}
         try { clipboardListener?.let { clipboardManager?.removePrimaryClipChangedListener(it) } } catch (_: Exception) {}

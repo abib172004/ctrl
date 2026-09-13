@@ -28,4 +28,12 @@ object CtrlColor {
 
     // Alerte et actions destructives
     val AlertRed = Color(0xFFB3314A)        // Erreurs d'exécution, suppression
+
+    // Piliers de l'assistant d'automatisation (Déclencheurs, Conditions, Actions)
+    val AutomationTrigger = Color(0xFFB71C1C)       // Déclencheurs (Encre carmin)
+    val AutomationTriggerHeader = Color(0xFF7F0000)
+    val AutomationCondition = Color(0xFF2E7D32)     // Conditions (Vert sauge / forêt)
+    val AutomationConditionHeader = Color(0xFF1B5E20)
+    val AutomationAction = Color(0xFF1565C0)        // Actions (Bleu cobalt / saphir)
+    val AutomationActionHeader = Color(0xFF0D47A1)
 }

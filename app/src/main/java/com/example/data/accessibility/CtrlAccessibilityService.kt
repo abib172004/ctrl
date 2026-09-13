@@ -30,47 +30,76 @@ class CtrlAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(Dispatchers.Default)
     private val ocrEngine = OcrEngine()
 
-    // Anti-spam : TYPE_WINDOW_CONTENT_CHANGED peut se déclencher des dizaines de fois par
-    // seconde sur une UI animée. On limite la vérification à 1 fois / 800ms, et on ne
-    // redéclenche une macro que sur un front (motif absent -> présent), pas en continu.
+    private val dao by lazy { CtrlDatabase.getInstance(applicationContext).ctrlDao() }
+    private val macroRepo by lazy { MacroRepositoryImpl(dao) }
+    private val varRepo by lazy { VariableRepositoryImpl(dao) }
+    private val logRepo by lazy { LogRepositoryImpl(dao) }
+    private val evaluerUseCase by lazy { EvaluerConditionsUseCase(applicationContext, varRepo) }
+    private val executerUseCase by lazy { ExecuterMacroUseCase(applicationContext, evaluerUseCase, macroRepo, varRepo, logRepo) }
+
+    // Cache mémoire des macros actives réactif - évite de requêter Room et parser le JSON à chaque événement
+    @Volatile
+    private var macrosActivesCache: List<com.example.domain.model.Macro> = emptyList()
+
+    // Anti-spam : TYPE_WINDOW_CONTENT_CHANGED limité à 1 fois / 1000ms
     private var derniereVerifContenuMs = 0L
     private val etatMotifTrouve = mutableMapOf<String, Boolean>()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         currentService = WeakReference(this)
+
+        // Abonnement continu au flux des macros pour maintenir le cache ultra-rapide
+        serviceScope.launch {
+            try {
+                macroRepo.getMacros().collect { liste ->
+                    macrosActivesCache = liste.filter { it.active }
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
         val pkgName = event.packageName?.toString() ?: ""
+        // CRITIQUE : Ne jamais intercepter ni auto-analyser l'interface de Ctrl elle-même
+        if (pkgName == packageName) return
+
         val eventType = event.eventType
 
         when (eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                if (pkgName.isNotBlank() && pkgName != packageName) {
+                if (pkgName.isNotBlank() && macrosActivesCache.any { it.trigger is Trigger.AppState }) {
                     verifierDeclencheursApplication(pkgName, estOuverte = true)
                 }
             }
             AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED -> {
-                val texteNotification = event.text.joinToString(" ")
-                verifierDeclencheursNotification(pkgName, texteNotification)
+                if (macrosActivesCache.any { it.trigger is Trigger.NotificationRecue }) {
+                    val texteNotification = event.text.joinToString(" ")
+                    verifierDeclencheursNotification(pkgName, texteNotification)
+                }
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                val maintenant = System.currentTimeMillis()
-                if (maintenant - derniereVerifContenuMs >= 800L) {
-                    derniereVerifContenuMs = maintenant
-                    verifierDeclencheursContenuEcran(pkgName)
+                // Vérifier l'écran UNIQUEMENT si au moins une macro active en dépend
+                if (macrosActivesCache.any { it.trigger is Trigger.ContenuEcran }) {
+                    val maintenant = System.currentTimeMillis()
+                    if (maintenant - derniereVerifContenuMs >= 1000L) {
+                        derniereVerifContenuMs = maintenant
+                        verifierDeclencheursContenuEcran(pkgName)
+                    }
                 }
             }
             AccessibilityEvent.TYPE_VIEW_CLICKED -> {
-                val noeudClique = event.source
-                val texteClique = noeudClique?.text?.toString()
-                    ?: noeudClique?.contentDescription?.toString()
-                    ?: event.text?.joinToString(" ")
-                if (!texteClique.isNullOrBlank()) {
-                    verifierDeclencheursClicUI(texteClique)
+                // Intercepter les clics UNIQUEMENT si une macro active écoute un clic UI
+                if (macrosActivesCache.any { it.trigger is Trigger.ClicUI }) {
+                    val noeudClique = event.source
+                    val texteClique = noeudClique?.text?.toString()
+                        ?: noeudClique?.contentDescription?.toString()
+                        ?: event.text?.joinToString(" ")
+                    if (!texteClique.isNullOrBlank()) {
+                        verifierDeclencheursClicUI(texteClique)
+                    }
                 }
             }
         }
@@ -79,19 +108,10 @@ class CtrlAccessibilityService : AccessibilityService() {
     private fun verifierDeclencheursClicUI(texteClique: String) {
         serviceScope.launch {
             try {
-                val dao = CtrlDatabase.getInstance(applicationContext).ctrlDao()
-                val macroRepo = MacroRepositoryImpl(dao)
-                val varRepo = VariableRepositoryImpl(dao)
-                val logRepo = LogRepositoryImpl(dao)
-                val evaluerUseCase = EvaluerConditionsUseCase(applicationContext, varRepo)
-                val executerUseCase = ExecuterMacroUseCase(applicationContext, evaluerUseCase, macroRepo, varRepo, logRepo)
-
-                val macros = macroRepo.getMacros().first().filter { it.active }
-                for (m in macros) {
-                    val t = m.trigger
-                    if (t is Trigger.ClicUI && t.texteCible.isNotBlank() &&
-                        texteClique.contains(t.texteCible, ignoreCase = true)
-                    ) {
+                val cibles = macrosActivesCache.filter { it.trigger is Trigger.ClicUI }
+                for (m in cibles) {
+                    val t = m.trigger as Trigger.ClicUI
+                    if (t.texteCible.isNotBlank() && texteClique.contains(t.texteCible, ignoreCase = true)) {
                         executerUseCase.executer(m)
                     }
                 }
@@ -101,20 +121,13 @@ class CtrlAccessibilityService : AccessibilityService() {
 
     private fun verifierDeclencheursContenuEcran(pkgName: String) {
         val racine = rootInActiveWindow ?: return
-        val textes = ocrEngine.extraireTextesNode(racine)
         serviceScope.launch {
             try {
-                val dao = CtrlDatabase.getInstance(applicationContext).ctrlDao()
-                val macroRepo = MacroRepositoryImpl(dao)
-                val varRepo = VariableRepositoryImpl(dao)
-                val logRepo = LogRepositoryImpl(dao)
-                val evaluerUseCase = EvaluerConditionsUseCase(applicationContext, varRepo)
-                val executerUseCase = ExecuterMacroUseCase(applicationContext, evaluerUseCase, macroRepo, varRepo, logRepo)
-
-                val macros = macroRepo.getMacros().first().filter { it.active }
-                for (m in macros) {
-                    val t = m.trigger
-                    if (t is Trigger.ContenuEcran && t.motifRegex.isNotBlank()) {
+                val textes = ocrEngine.extraireTextesNode(racine)
+                val cibles = macrosActivesCache.filter { it.trigger is Trigger.ContenuEcran }
+                for (m in cibles) {
+                    val t = m.trigger as Trigger.ContenuEcran
+                    if (t.motifRegex.isNotBlank()) {
                         val sourceMatch = t.appSource.isNullOrBlank() || t.appSource.equals(pkgName, ignoreCase = true)
                         if (!sourceMatch) continue
                         val trouve = ocrEngine.verifierPresenceTexte(textes, t.motifRegex)
@@ -132,17 +145,10 @@ class CtrlAccessibilityService : AccessibilityService() {
     private fun verifierDeclencheursApplication(pkgName: String, estOuverte: Boolean) {
         serviceScope.launch {
             try {
-                val dao = CtrlDatabase.getInstance(applicationContext).ctrlDao()
-                val macroRepo = MacroRepositoryImpl(dao)
-                val varRepo = VariableRepositoryImpl(dao)
-                val logRepo = LogRepositoryImpl(dao)
-                val evaluerUseCase = EvaluerConditionsUseCase(applicationContext, varRepo)
-                val executerUseCase = ExecuterMacroUseCase(applicationContext, evaluerUseCase, macroRepo, varRepo, logRepo)
-
-                val macros = macroRepo.getMacros().first().filter { it.active }
-                for (m in macros) {
-                    val t = m.trigger
-                    if (t is Trigger.AppState && t.packageName.equals(pkgName, ignoreCase = true) && t.estOuverte == estOuverte) {
+                val cibles = macrosActivesCache.filter { it.trigger is Trigger.AppState }
+                for (m in cibles) {
+                    val t = m.trigger as Trigger.AppState
+                    if (t.packageName.equals(pkgName, ignoreCase = true) && t.estOuverte == estOuverte) {
                         executerUseCase.executer(m)
                     }
                 }
@@ -153,22 +159,13 @@ class CtrlAccessibilityService : AccessibilityService() {
     private fun verifierDeclencheursNotification(pkgName: String, texte: String) {
         serviceScope.launch {
             try {
-                val dao = CtrlDatabase.getInstance(applicationContext).ctrlDao()
-                val macroRepo = MacroRepositoryImpl(dao)
-                val varRepo = VariableRepositoryImpl(dao)
-                val logRepo = LogRepositoryImpl(dao)
-                val evaluerUseCase = EvaluerConditionsUseCase(applicationContext, varRepo)
-                val executerUseCase = ExecuterMacroUseCase(applicationContext, evaluerUseCase, macroRepo, varRepo, logRepo)
-
-                val macros = macroRepo.getMacros().first().filter { it.active }
-                for (m in macros) {
-                    val t = m.trigger
-                    if (t is Trigger.NotificationRecue) {
-                        val sourceMatch = t.appSource.isNullOrBlank() || t.appSource.equals(pkgName, ignoreCase = true)
-                        val motCleMatch = t.motCle.isNullOrBlank() || texte.contains(t.motCle, ignoreCase = true)
-                        if (sourceMatch && motCleMatch) {
-                            executerUseCase.executer(m)
-                        }
+                val cibles = macrosActivesCache.filter { it.trigger is Trigger.NotificationRecue }
+                for (m in cibles) {
+                    val t = m.trigger as Trigger.NotificationRecue
+                    val sourceMatch = t.appSource.isNullOrBlank() || t.appSource.equals(pkgName, ignoreCase = true)
+                    val motCleMatch = t.motCle.isNullOrBlank() || texte.contains(t.motCle, ignoreCase = true)
+                    if (sourceMatch && motCleMatch) {
+                        executerUseCase.executer(m)
                     }
                 }
             } catch (_: Exception) {}

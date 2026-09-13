@@ -36,13 +36,13 @@ import com.example.presentation.theme.CtrlColor
 import com.example.presentation.theme.PillShape
 import com.example.presentation.theme.components.*
 
-// Couleurs fidèles aux codes MacroDroid
-private val MacroDroidRed = Color(0xFFD32F2F)
-private val MacroDroidRedHeader = Color(0xFFB71C1C)
-private val MacroDroidGreen = Color(0xFF2E7D32)
-private val MacroDroidGreenHeader = Color(0xFF1B5E20)
-private val MacroDroidBlue = Color(0xFF1976D2)
-private val MacroDroidBlueHeader = Color(0xFF0D47A1)
+// Couleurs sémantiques des piliers du constructeur (Daylit)
+private val MacroDroidRed = CtrlColor.AutomationTrigger
+private val MacroDroidRedHeader = CtrlColor.AutomationTriggerHeader
+private val MacroDroidGreen = CtrlColor.AutomationCondition
+private val MacroDroidGreenHeader = CtrlColor.AutomationConditionHeader
+private val MacroDroidBlue = CtrlColor.AutomationAction
+private val MacroDroidBlueHeader = CtrlColor.AutomationActionHeader
 
 // Enum des types de configuration
 private enum class TriggerConfigType {

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -64,6 +65,18 @@ class MainActivity : ComponentActivity() {
                     NavDestination.SETTINGS.route
                 )
 
+                val navigateToTab: (String) -> Unit = { targetRoute ->
+                    if (currentRoute != targetRoute) {
+                        navController.navigate(targetRoute) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     bottomBar = {
@@ -71,15 +84,7 @@ class MainActivity : ComponentActivity() {
                             CtrlBottomNavBar(
                                 currentRoute = currentRoute,
                                 onNavigate = { destination ->
-                                    if (currentRoute != destination.route) {
-                                        navController.navigate(destination.route) {
-                                            popUpTo(NavDestination.DASHBOARD.route) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
+                                    navigateToTab(destination.route)
                                 }
                             )
                         }
@@ -101,13 +106,13 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate("macro_detail/$macroId")
                                 },
                                 onNavigateToMacros = {
-                                    navController.navigate(NavDestination.MACROS.route)
+                                    navigateToTab(NavDestination.MACROS.route)
                                 },
                                 onNavigateToAi = {
-                                    navController.navigate(NavDestination.IA.route)
+                                    navigateToTab(NavDestination.IA.route)
                                 },
                                 onNavigateToJournal = {
-                                    navController.navigate(NavDestination.JOURNAL.route)
+                                    navigateToTab(NavDestination.JOURNAL.route)
                                 }
                             )
                         }
@@ -129,9 +134,7 @@ class MainActivity : ComponentActivity() {
                             AiGeneratorScreen(
                                 viewModel = aiGeneratorViewModel,
                                 onMacroSaved = {
-                                    navController.navigate(NavDestination.DASHBOARD.route) {
-                                        popUpTo(NavDestination.DASHBOARD.route) { inclusive = true }
-                                    }
+                                    navigateToTab(NavDestination.DASHBOARD.route)
                                 }
                             )
                         }

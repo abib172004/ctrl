@@ -17,35 +17,16 @@ import kotlinx.coroutines.launch
 
 data class DashboardUiState(
     val macros: List<Macro> = emptyList(),
+    val macrosActives: List<Macro> = emptyList(),
     val recentLogs: List<LogEntry> = emptyList(),
     val searchQuery: String = "",
     val isAccessibilityEnabled: Boolean = false,
     val isLoading: Boolean = false,
-    val testFeedbackMessage: String? = null
-) {
-    val macrosActives: List<Macro> get() = macros.filter { it.active }
-
-    val macrosFiltrees: List<Macro>
-        get() = if (searchQuery.isBlank()) {
-            macros
-        } else {
-            macros.filter {
-                it.nom.contains(searchQuery, ignoreCase = true) ||
-                it.description.contains(searchQuery, ignoreCase = true) ||
-                it.trigger.label.contains(searchQuery, ignoreCase = true)
-            }
-        }
-
-    val totalActives: Int get() = macros.count { it.active }
-    val totalExecutions: Int get() = macros.sumOf { it.nbExecutions }
-    val tauxSuccesGlobal: String
-        get() {
-            if (totalExecutions == 0) return "—"
-            val totalEchecs = macros.sumOf { it.nbEchecs }
-            val succes = (totalExecutions - totalEchecs).coerceAtLeast(0)
-            return "${((succes.toDouble() / totalExecutions) * 100).toInt()}%"
-        }
-}
+    val testFeedbackMessage: String? = null,
+    val totalActives: Int = 0,
+    val totalExecutions: Int = 0,
+    val tauxSuccesGlobal: String = "—"
+)
 
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -87,7 +68,23 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private fun chargerMacros() {
         viewModelScope.launch {
             macroRepository.getMacros().collect { liste ->
-                _uiState.update { it.copy(macros = liste) }
+                val actives = liste.filter { it.active }
+                val totalExecs = liste.sumOf { it.nbExecutions }
+                val totalEchecs = liste.sumOf { it.nbEchecs }
+                val taux = if (totalExecs == 0) "—" else {
+                    val succes = (totalExecs - totalEchecs).coerceAtLeast(0)
+                    "${((succes.toDouble() / totalExecs) * 100).toInt()}%"
+                }
+
+                _uiState.update {
+                    it.copy(
+                        macros = liste,
+                        macrosActives = actives,
+                        totalActives = actives.size,
+                        totalExecutions = totalExecs,
+                        tauxSuccesGlobal = taux
+                    )
+                }
             }
         }
     }

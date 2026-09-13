@@ -16,11 +16,9 @@ import kotlinx.coroutines.launch
 data class JournalUiState(
     val logs: List<LogEntry> = emptyList(),
     val filtreStatut: StatutExecution? = null,
-    val selectedLog: LogEntry? = null
-) {
-    val logsFiltres: List<LogEntry>
-        get() = if (filtreStatut == null) logs else logs.filter { it.statut == filtreStatut }
-}
+    val selectedLog: LogEntry? = null,
+    val logsFiltres: List<LogEntry> = emptyList()
+)
 
 class JournalViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -37,13 +35,27 @@ class JournalViewModel(application: Application) : AndroidViewModel(application)
     private fun chargerLogs() {
         viewModelScope.launch {
             logRepository.getLogs().collect { list ->
-                _uiState.update { it.copy(logs = list) }
+                _uiState.update { current ->
+                    current.copy(
+                        logs = list,
+                        logsFiltres = filtrer(list, current.filtreStatut)
+                    )
+                }
             }
         }
     }
 
     fun setFiltre(statut: StatutExecution?) {
-        _uiState.update { it.copy(filtreStatut = statut) }
+        _uiState.update { current ->
+            current.copy(
+                filtreStatut = statut,
+                logsFiltres = filtrer(current.logs, statut)
+            )
+        }
+    }
+
+    private fun filtrer(logs: List<LogEntry>, statut: StatutExecution?): List<LogEntry> {
+        return if (statut == null) logs else logs.filter { it.statut == statut }
     }
 
     fun selectLog(log: LogEntry?) {

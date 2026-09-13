@@ -31,49 +31,16 @@ enum class TriMacro(val label: String) {
 
 data class MacrosUiState(
     val macros: List<Macro> = emptyList(),
+    val macrosFiltrees: List<Macro> = emptyList(),
     val searchQuery: String = "",
     val filtreStatut: StatutFiltreMacro = StatutFiltreMacro.TOUTES,
     val filtreCategorie: CategorieTrigger? = null,
     val tri: TriMacro = TriMacro.RECENT,
-    val feedbackMessage: String? = null
-) {
-    val macrosFiltrees: List<Macro>
-        get() {
-            var res = macros
-
-            // Filtre statut
-            res = when (filtreStatut) {
-                StatutFiltreMacro.TOUTES -> res
-                StatutFiltreMacro.ACTIVES -> res.filter { it.active }
-                StatutFiltreMacro.INACTIVES -> res.filter { !it.active }
-            }
-
-            // Filtre catégorie
-            if (filtreCategorie != null) {
-                res = res.filter { it.trigger.categorie == filtreCategorie }
-            }
-
-            // Recherche texte
-            if (searchQuery.isNotBlank()) {
-                res = res.filter {
-                    it.nom.contains(searchQuery, ignoreCase = true) ||
-                    it.description.contains(searchQuery, ignoreCase = true) ||
-                    it.trigger.label.contains(searchQuery, ignoreCase = true)
-                }
-            }
-
-            // Tri
-            return when (tri) {
-                TriMacro.RECENT -> res.sortedByDescending { it.dateCreation }
-                TriMacro.NOM_AZ -> res.sortedBy { it.nom.lowercase() }
-                TriMacro.EXECUTIONS -> res.sortedByDescending { it.nbExecutions }
-            }
-        }
-
-    val totalMacros: Int get() = macros.size
-    val totalActives: Int get() = macros.count { it.active }
-    val totalInactives: Int get() = macros.count { !it.active }
-}
+    val feedbackMessage: String? = null,
+    val totalMacros: Int = 0,
+    val totalActives: Int = 0,
+    val totalInactives: Int = 0
+)
 
 class MacrosViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -97,28 +64,117 @@ class MacrosViewModel(application: Application) : AndroidViewModel(application) 
         chargerMacros()
     }
 
+    private fun recalculerFiltres(
+        macros: List<Macro>,
+        query: String,
+        statut: StatutFiltreMacro,
+        cat: CategorieTrigger?,
+        tri: TriMacro,
+        feedback: String? = _uiState.value.feedbackMessage
+    ): MacrosUiState {
+        var res = macros
+
+        res = when (statut) {
+            StatutFiltreMacro.TOUTES -> res
+            StatutFiltreMacro.ACTIVES -> res.filter { it.active }
+            StatutFiltreMacro.INACTIVES -> res.filter { !it.active }
+        }
+
+        if (cat != null) {
+            res = res.filter { it.trigger.categorie == cat }
+        }
+
+        if (query.isNotBlank()) {
+            res = res.filter {
+                it.nom.contains(query, ignoreCase = true) ||
+                it.description.contains(query, ignoreCase = true) ||
+                it.trigger.label.contains(query, ignoreCase = true)
+            }
+        }
+
+        val filtrees = when (tri) {
+            TriMacro.RECENT -> res.sortedByDescending { it.dateCreation }
+            TriMacro.NOM_AZ -> res.sortedBy { it.nom.lowercase() }
+            TriMacro.EXECUTIONS -> res.sortedByDescending { it.nbExecutions }
+        }
+
+        return MacrosUiState(
+            macros = macros,
+            macrosFiltrees = filtrees,
+            searchQuery = query,
+            filtreStatut = statut,
+            filtreCategorie = cat,
+            tri = tri,
+            feedbackMessage = feedback,
+            totalMacros = macros.size,
+            totalActives = macros.count { it.active },
+            totalInactives = macros.count { !it.active }
+        )
+    }
+
     private fun chargerMacros() {
         viewModelScope.launch {
             macroRepository.getMacros().collect { liste ->
-                _uiState.update { it.copy(macros = liste) }
+                _uiState.update { curr ->
+                    recalculerFiltres(
+                        macros = liste,
+                        query = curr.searchQuery,
+                        statut = curr.filtreStatut,
+                        cat = curr.filtreCategorie,
+                        tri = curr.tri,
+                        feedback = curr.feedbackMessage
+                    )
+                }
             }
         }
     }
 
     fun onSearchQueryChanged(query: String) {
-        _uiState.update { it.copy(searchQuery = query) }
+        _uiState.update { curr ->
+            recalculerFiltres(
+                macros = curr.macros,
+                query = query,
+                statut = curr.filtreStatut,
+                cat = curr.filtreCategorie,
+                tri = curr.tri
+            )
+        }
     }
 
     fun setFiltreStatut(statut: StatutFiltreMacro) {
-        _uiState.update { it.copy(filtreStatut = statut) }
+        _uiState.update { curr ->
+            recalculerFiltres(
+                macros = curr.macros,
+                query = curr.searchQuery,
+                statut = statut,
+                cat = curr.filtreCategorie,
+                tri = curr.tri
+            )
+        }
     }
 
     fun setFiltreCategorie(cat: CategorieTrigger?) {
-        _uiState.update { it.copy(filtreCategorie = cat) }
+        _uiState.update { curr ->
+            recalculerFiltres(
+                macros = curr.macros,
+                query = curr.searchQuery,
+                statut = curr.filtreStatut,
+                cat = cat,
+                tri = curr.tri
+            )
+        }
     }
 
     fun setTri(tri: TriMacro) {
-        _uiState.update { it.copy(tri = tri) }
+        _uiState.update { curr ->
+            recalculerFiltres(
+                macros = curr.macros,
+                query = curr.searchQuery,
+                statut = curr.filtreStatut,
+                cat = curr.filtreCategorie,
+                tri = tri
+            )
+        }
     }
 
     fun toggleMacroActive(macroId: String, active: Boolean) {
