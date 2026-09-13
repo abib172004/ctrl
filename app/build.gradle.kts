@@ -60,7 +60,6 @@ android {
     unitTests {
       isIncludeAndroidResources = true
       all {
-        it.systemProperty("robolectric.dependency.dir", "${System.getProperty("user.home")}/.cache/robolectric")
         it.systemProperty("maven.repo.local", "${System.getProperty("user.home")}/.cache/m2")
       }
     }
