@@ -29,7 +29,7 @@ abstract class CtrlDatabase : RoomDatabase() {
                     CtrlDatabase::class.java,
                     "ctrl_automation.db"
                 )
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration(dropAllTables = true)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
