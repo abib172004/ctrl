@@ -179,6 +179,22 @@ fun AiGeneratorScreen(
                 fontWeight = FontWeight.Medium
             )
 
+            Spacer(modifier = Modifier.height(4.dp))
+
+            if (uiState.viaGeminiReel == false) {
+                Text(
+                    text = "⚠ Mode hors-ligne : Gemini indisponible (clé API manquante ou réseau), résultat approximatif généré localement par mots-clés.",
+                    color = CtrlColor.AlertRed,
+                    fontSize = 11.sp
+                )
+            } else if (uiState.viaGeminiReel == true) {
+                Text(
+                    text = "✓ Généré par Gemini (gemini-2.5-flash)",
+                    color = CtrlColor.SlateSmoke,
+                    fontSize = 11.sp
+                )
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
             CtrlMacroCard(

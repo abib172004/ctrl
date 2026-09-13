@@ -46,7 +46,7 @@ data class DashboardUiState(
 class DashboardViewModel(application: Application) : AndroidViewModel(application) {
 
     private val dao = CtrlDatabase.getInstance(application).ctrlDao()
-    val macroRepository = MacroRepositoryImpl(dao)
+    val macroRepository = MacroRepositoryImpl(dao, application)
     val variableRepository = VariableRepositoryImpl(dao)
     val logRepository = LogRepositoryImpl(dao)
     private val evaluerConditionsUseCase = EvaluerConditionsUseCase(application, variableRepository)

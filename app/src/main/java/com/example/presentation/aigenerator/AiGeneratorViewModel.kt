@@ -4,9 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.room.CtrlDatabase
+import com.example.data.remote.api.GeminiApiClient
 import com.example.data.repository.MacroRepositoryImpl
 import com.example.domain.model.Macro
-import com.example.domain.usecase.GenererMacroParIAUseCase
+import com.example.domain.usecase.GenererMacroAvecGeminiUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +18,7 @@ data class AiGeneratorUiState(
     val prompt: String = "",
     val isGenerating: Boolean = false,
     val macroGeneree: Macro? = null,
+    val viaGeminiReel: Boolean? = null,
     val errorMessage: String? = null,
     val isSaved: Boolean = false
 )
@@ -24,8 +26,9 @@ data class AiGeneratorUiState(
 class AiGeneratorViewModel(application: Application) : AndroidViewModel(application) {
 
     private val dao = CtrlDatabase.getInstance(application).ctrlDao()
-    private val macroRepository = MacroRepositoryImpl(dao)
-    private val genererMacroUseCase = GenererMacroParIAUseCase()
+    private val macroRepository = MacroRepositoryImpl(dao, application)
+    private val geminiClient = GeminiApiClient(application)
+    private val genererMacroUseCase = GenererMacroAvecGeminiUseCase(geminiClient)
 
     private val _uiState = MutableStateFlow(AiGeneratorUiState())
     val uiState: StateFlow<AiGeneratorUiState> = _uiState.asStateFlow()
@@ -46,11 +49,17 @@ class AiGeneratorViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isGenerating = true, errorMessage = null, macroGeneree = null) }
+            _uiState.update { it.copy(isGenerating = true, errorMessage = null, macroGeneree = null, viaGeminiReel = null) }
             val result = genererMacroUseCase.genererMacro(prompt)
             result.fold(
-                onSuccess = { macro ->
-                    _uiState.update { it.copy(isGenerating = false, macroGeneree = macro) }
+                onSuccess = { resultat ->
+                    _uiState.update {
+                        it.copy(
+                            isGenerating = false,
+                            macroGeneree = resultat.macro,
+                            viaGeminiReel = resultat.viaGeminiReel
+                        )
+                    }
                 },
                 onFailure = { err ->
                     _uiState.update { it.copy(isGenerating = false, errorMessage = err.message) }
@@ -68,6 +77,6 @@ class AiGeneratorViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun resetSaved() {
-        _uiState.update { it.copy(isSaved = false, macroGeneree = null, prompt = "") }
+        _uiState.update { it.copy(isSaved = false, macroGeneree = null, viaGeminiReel = null, prompt = "") }
     }
 }

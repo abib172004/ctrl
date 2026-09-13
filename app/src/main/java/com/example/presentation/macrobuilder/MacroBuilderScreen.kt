@@ -58,7 +58,9 @@ private enum class TriggerConfigType {
     ECRAN,
     CASQUE,
     VARIABLE,
-    NOTIFICATION
+    NOTIFICATION,
+    CONTENU_ECRAN,
+    CLIC_UI
 }
 
 private enum class ConditionConfigType {
@@ -89,7 +91,8 @@ private enum class ActionConfigType {
     ATTENDRE,
     INTERFACE_UI,
     VARIABLE,
-    IA_GEMINI
+    IA_GEMINI,
+    VERIF_TEXTE_ECRAN
 }
 
 private data class TriggerPreset(
@@ -505,43 +508,45 @@ private fun EtapeTriggerGridContent(
             // Batterie / Alimentation
             TriggerPreset("battery_level", "Niveau de la Batterie", Icons.Default.BatteryChargingFull, "Batterie / Alimentation", TriggerConfigType.NIVEAU_BATTERIE, Trigger.NiveauBatterie(seuil = 20, inferieur = true)),
             TriggerPreset("power_connected", "Alimentation Connectée/Déconnectée", Icons.Default.Power, "Batterie / Alimentation", TriggerConfigType.ALIMENTATION, Trigger.Alimentation(connectee = true)),
-            TriggerPreset("battery_temp", "Température de la batterie", Icons.Default.Thermostat, "Batterie / Alimentation", null, Trigger.Manuel()),
-            TriggerPreset("battery_saver", "État de l'économiseur de batterie", Icons.Default.BatteryAlert, "Batterie / Alimentation", null, Trigger.Manuel()),
+            TriggerPreset("battery_temp", "Température de la batterie", Icons.Default.Thermostat, "Batterie / Alimentation", null, Trigger.TemperatureBatterie(seuilCelsius = 40, superieur = true)),
+            TriggerPreset("battery_saver", "État de l'économiseur de batterie", Icons.Default.BatteryAlert, "Batterie / Alimentation", null, Trigger.EconomiseurBatterie(actif = true)),
 
             // Connectivité
             TriggerPreset("wifi_state", "Changement d'état du Wi-Fi", Icons.Default.Wifi, "Connectivité", TriggerConfigType.WIFI, Trigger.WifiState(connecte = true)),
             TriggerPreset("bluetooth_event", "Événement Bluetooth", Icons.Default.Bluetooth, "Connectivité", TriggerConfigType.BLUETOOTH, Trigger.BluetoothState(connecte = true)),
             TriggerPreset("headset_plugged", "Casque Audio Branché/Débranché", Icons.Default.Headset, "Connectivité", TriggerConfigType.CASQUE, Trigger.CasqueAudio(branche = true)),
-            TriggerPreset("hotspot_state", "Point d'Accès Activé/Désactivé", Icons.Default.WifiTethering, "Connectivité", null, Trigger.Manuel()),
-            TriggerPreset("vpn_state", "Changement d'état du VPN", Icons.Default.VpnKey, "Connectivité", null, Trigger.Manuel()),
-            TriggerPreset("usb_connection", "Connexion USB", Icons.Default.Usb, "Connectivité", null, Trigger.Manuel()),
+            TriggerPreset("hotspot_state", "Point d'Accès Activé/Désactivé", Icons.Default.WifiTethering, "Connectivité", null, Trigger.HotspotState(actif = true)),
+            TriggerPreset("vpn_state", "Changement d'état du VPN", Icons.Default.VpnKey, "Connectivité", null, Trigger.VpnState(actif = true)),
+            TriggerPreset("usb_connection", "Connexion USB", Icons.Default.Usb, "Connectivité", null, Trigger.UsbConnexion(connecte = true)),
 
             // Appel / SMS
             TriggerPreset("incoming_call", "Appel Entrant", Icons.Default.Phone, "Appel / SMS", TriggerConfigType.APPEL_ENTRANT, Trigger.AppelEntrant()),
-            TriggerPreset("outgoing_call", "Appel Sortant", Icons.Default.Call, "Appel / SMS", null, Trigger.AppelEntrant()),
-            TriggerPreset("missed_call", "Appel Manqué", Icons.Default.CallMissed, "Appel / SMS", null, Trigger.AppelEntrant()),
+            TriggerPreset("outgoing_call", "Appel Sortant", Icons.Default.Call, "Appel / SMS", null, Trigger.AppelSortant()),
+            TriggerPreset("missed_call", "Appel Manqué", Icons.Default.CallMissed, "Appel / SMS", null, Trigger.AppelManque()),
+            TriggerPreset("call_ended", "Appel Terminé", Icons.Default.CallEnd, "Appel / SMS", null, Trigger.AppelTermine()),
             TriggerPreset("sms_received", "SMS Reçu", Icons.Default.Sms, "Appel / SMS", TriggerConfigType.SMS_RECU, Trigger.SmsRecu()),
-            TriggerPreset("sms_sent", "SMS Envoyé", Icons.Default.Send, "Appel / SMS", null, Trigger.SmsRecu()),
+            TriggerPreset("sms_sent", "SMS Envoyé", Icons.Default.Send, "Appel / SMS", null, Trigger.SmsEnvoye()),
 
             // Capteurs
             TriggerPreset("shake_device", "Appareil secoué", Icons.Default.Vibration, "Capteurs", null, Trigger.Secousse(sensibilite = 12)),
             TriggerPreset("flip_device", "Appareil Retourné", Icons.Default.ScreenRotation, "Capteurs", null, Trigger.Secousse(sensibilite = 16)),
-            TriggerPreset("light_sensor", "Capteur de Luminosité", Icons.Default.WbSunny, "Capteurs", null, Trigger.Manuel()),
-            TriggerPreset("proximity_sensor", "Capteur de Proximité", Icons.Default.Sensors, "Capteurs", null, Trigger.Manuel()),
-            TriggerPreset("screen_orientation", "Orientation de l'écran", Icons.Default.ScreenRotation, "Capteurs", null, Trigger.Manuel()),
+            TriggerPreset("light_sensor", "Capteur de Luminosité", Icons.Default.WbSunny, "Capteurs", null, Trigger.CapteurLuminosite(seuilLux = 10, inferieur = true)),
+            TriggerPreset("proximity_sensor", "Capteur de Proximité", Icons.Default.Sensors, "Capteurs", null, Trigger.CapteurProximite(proche = true)),
+            TriggerPreset("screen_orientation", "Orientation de l'écran", Icons.Default.ScreenRotation, "Capteurs", null, Trigger.OrientationEcran(portrait = true)),
 
             // Événements de l'appareil
             TriggerPreset("device_boot", "Démarrage de l'Appareil", Icons.Default.RestartAlt, "Événements de l'appareil", null, Trigger.DemarrageAppareil()),
             TriggerPreset("screen_state", "Écran Allumé/Éteint", Icons.Default.Smartphone, "Événements de l'appareil", TriggerConfigType.ECRAN, Trigger.EcranState(allume = true)),
-            TriggerPreset("screen_unlocked", "Écran Déverrouillé", Icons.Default.LockOpen, "Événements de l'appareil", null, Trigger.EcranState(allume = true)),
-            TriggerPreset("torch_state", "Torche allumée/éteinte", Icons.Default.FlashlightOn, "Événements de l'appareil", null, Trigger.Manuel()),
-            TriggerPreset("silent_mode", "Mode Silencieux Activé/Désactivé", Icons.Default.VolumeOff, "Événements de l'appareil", null, Trigger.Manuel()),
-            TriggerPreset("clipboard_changed", "Modification du Presse-Papier", Icons.Default.ContentPaste, "Événements de l'appareil", null, Trigger.Manuel()),
+            TriggerPreset("screen_unlocked", "Écran Déverrouillé", Icons.Default.LockOpen, "Événements de l'appareil", null, Trigger.EcranDeverrouille()),
+            TriggerPreset("torch_state", "Torche allumée/éteinte", Icons.Default.FlashlightOn, "Événements de l'appareil", null, Trigger.TorcheState(allumee = true)),
+            TriggerPreset("silent_mode", "Mode Silencieux Activé/Désactivé", Icons.Default.VolumeOff, "Événements de l'appareil", null, Trigger.ModeSilencieux(actif = true)),
+            TriggerPreset("clipboard_changed", "Modification du Presse-Papier", Icons.Default.ContentPaste, "Événements de l'appareil", null, Trigger.PressePapierModifie()),
 
             // Applications & Saisie
             TriggerPreset("app_opened_closed", "Application Lancée/Fermée", Icons.Default.Apps, "Applications & Saisie", TriggerConfigType.APPLICATION, Trigger.AppState()),
             TriggerPreset("notification_received", "Notification", Icons.Default.Notifications, "Applications & Saisie", TriggerConfigType.NOTIFICATION, Trigger.NotificationRecue()),
-            TriggerPreset("ui_click", "Clic sur l'interface utilisateur", Icons.Default.TouchApp, "Applications & Saisie", null, Trigger.Manuel()),
+            TriggerPreset("screen_content", "Contenu de l'écran", Icons.Default.FindInPage, "Applications & Saisie", TriggerConfigType.CONTENU_ECRAN, Trigger.ContenuEcran()),
+            TriggerPreset("ui_click", "Clic sur l'interface utilisateur", Icons.Default.TouchApp, "Applications & Saisie", TriggerConfigType.CLIC_UI, Trigger.ClicUI()),
             TriggerPreset("variable_change", "Changement d'une Variable", Icons.Default.DataObject, "Applications & Saisie", TriggerConfigType.VARIABLE, Trigger.ChangementVariable("mode")),
             TriggerPreset("manual_trigger", "Déclencheur Manuel", Icons.Default.PlayArrow, "Applications & Saisie", null, Trigger.Manuel())
         )
@@ -861,6 +866,29 @@ private fun ConfigurerTriggerDialog(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
+                    TriggerConfigType.CONTENU_ECRAN -> {
+                        Text("Motif à rechercher à l'écran :", fontSize = 13.sp, color = CtrlColor.SlateSmoke)
+                        OutlinedTextField(
+                            value = filterText,
+                            onValueChange = { filterText = it },
+                            label = { Text("Texte ou expression régulière") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            "Ex : \"Solde insuffisant\" ou une regex comme \\\\d{4}€",
+                            fontSize = 11.sp,
+                            color = CtrlColor.SlateSmoke
+                        )
+                    }
+                    TriggerConfigType.CLIC_UI -> {
+                        Text("Élément à surveiller :", fontSize = 13.sp, color = CtrlColor.SlateSmoke)
+                        OutlinedTextField(
+                            value = filterText,
+                            onValueChange = { filterText = it },
+                            label = { Text("Texte du bouton/élément à cliquer") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     null -> {}
                 }
             }
@@ -882,6 +910,8 @@ private fun ConfigurerTriggerDialog(
                         TriggerConfigType.CASQUE -> Trigger.CasqueAudio(branche = headsetPlugged)
                         TriggerConfigType.VARIABLE -> Trigger.ChangementVariable(nomVariable = variableName)
                         TriggerConfigType.NOTIFICATION -> Trigger.NotificationRecue(motCle = filterText.ifBlank { null })
+                        TriggerConfigType.CONTENU_ECRAN -> Trigger.ContenuEcran(motifRegex = filterText)
+                        TriggerConfigType.CLIC_UI -> Trigger.ClicUI(texteCible = filterText)
                         null -> preset.defaultTrigger
                     }
                     onConfirm(configured)
@@ -1027,27 +1057,29 @@ private fun CatalogueConditionsDialog(
             // Date / Heure
             ConditionPreset("time_range", "Heure de la Journée", Icons.Default.AccessTime, "Date / Heure", ConditionConfigType.PLAGE_HORAIRE, Condition.PlageHoraire(22, 0, 7, 0)),
             ConditionPreset("day_of_week", "Jour de la Semaine", Icons.Default.CalendarToday, "Date / Heure", ConditionConfigType.JOURS_SEMAINE, Condition.JoursSemaine()),
-            ConditionPreset("day_of_month", "Jour du Mois", Icons.Default.CalendarMonth, "Date / Heure", null, Condition.JoursSemaine()),
+            ConditionPreset("day_of_month", "Jour du Mois", Icons.Default.CalendarMonth, "Date / Heure", null, Condition.JourDuMois(jours = listOf(1))),
 
             // Batterie / Alimentation
             ConditionPreset("battery_power", "Alimentation Externe Connectée", Icons.Default.Power, "Batterie / Alimentation", ConditionConfigType.ALIMENTATION, Condition.EnCharge(true)),
             ConditionPreset("battery_level", "Niveau de la Batterie", Icons.Default.BatteryChargingFull, "Batterie / Alimentation", ConditionConfigType.NIVEAU_BATTERIE, Condition.NiveauBatterie(50, true)),
-            ConditionPreset("battery_saver", "État de l'économiseur de batterie", Icons.Default.BatteryAlert, "Batterie / Alimentation", null, Condition.EnCharge(false)),
+            ConditionPreset("battery_saver", "État de l'économiseur de batterie", Icons.Default.BatteryAlert, "Batterie / Alimentation", null, Condition.EconomiseurBatterieActif(true)),
 
             // Connectivité
             ConditionPreset("wifi_state", "État du Wi-Fi", Icons.Default.Wifi, "Connectivité", ConditionConfigType.WIFI, Condition.WifiConnecte(true)),
             ConditionPreset("bluetooth_state", "État du Bluetooth", Icons.Default.Bluetooth, "Connectivité", ConditionConfigType.BLUETOOTH, Condition.BluetoothActif(true)),
             ConditionPreset("headset_state", "Connexion Casque Audio", Icons.Default.Headset, "Connectivité", ConditionConfigType.CASQUE, Condition.CasqueBranche(true)),
-            ConditionPreset("vpn_state", "État du VPN", Icons.Default.VpnKey, "Connectivité", null, Condition.WifiConnecte(true)),
+            ConditionPreset("vpn_state", "État du VPN", Icons.Default.VpnKey, "Connectivité", null, Condition.VpnActif(true)),
 
             // Écran & Appareil
             ConditionPreset("screen_state", "Écran Allumé/Éteint", Icons.Default.Smartphone, "Écran & Appareil", ConditionConfigType.ECRAN, Condition.EcranAllume(true)),
-            ConditionPreset("device_locked", "Appareil Verrouillé/Déverrouillé", Icons.Default.ScreenLockPortrait, "Écran & Appareil", null, Condition.EcranAllume(false)),
+            ConditionPreset("device_locked", "Appareil Verrouillé/Déverrouillé", Icons.Default.ScreenLockPortrait, "Écran & Appareil", null, Condition.AppareilVerrouille(true)),
             ConditionPreset("app_running", "Application en Cours d'Exécution", Icons.Default.Apps, "Écran & Appareil", ConditionConfigType.APPLICATION, Condition.AppAuPremierPlan()),
             ConditionPreset("accessibility_active", "État du service d'accessibilité", Icons.Default.Accessibility, "Écran & Appareil", null, Condition.ServiceAccessibiliteActif(true)),
 
             // Variables & Logique
-            ConditionPreset("variable_val", "Variable MacroDroid", Icons.Default.DataObject, "Variables & Logique", ConditionConfigType.VARIABLE, Condition.VariableValeur("mode", "actif"))
+            ConditionPreset("variable_val", "Variable MacroDroid", Icons.Default.DataObject, "Variables & Logique", ConditionConfigType.VARIABLE, Condition.VariableValeur("mode", "actif")),
+            ConditionPreset("variable_compare", "Comparer des valeurs", Icons.Default.Rule, "Variables & Logique", null, Condition.VariableComparaison("mode", OperateurComparaison.EGAL, "actif")),
+            ConditionPreset("macro_not_running", "Macro pas déjà en cours (anti-doublon)", Icons.Default.Block, "Variables & Logique", null, Condition.MacroEnCoursExecution(macroId = "", nomMacro = "cette macro", doitEtreEnCours = false))
         )
     }
 
@@ -1494,6 +1526,13 @@ private fun CatalogueActionsDialog(
             // Applications & Web
             ActionPreset("open_app", "Lancer une Application", Icons.Default.Apps, "Applications & Web", ActionConfigType.APPLICATION, ActionMacro.OuvrirApp("com.google.android.youtube", "YouTube")),
             ActionPreset("open_url", "Ouvrir un Site Web", Icons.Default.Language, "Applications & Web", ActionConfigType.URL, ActionMacro.OuvrirUrl("https://google.com")),
+            ActionPreset("call", "Passer un Appel", Icons.Default.Call, "Applications & Web", null, ActionMacro.PasserAppel("0600000000")),
+            ActionPreset("open_call_log", "Ouvrir le Journal d'Appels", Icons.Default.History, "Applications & Web", null, ActionMacro.OuvrirJournalAppels()),
+            ActionPreset("share_text", "Partager du Texte", Icons.AutoMirrored.Filled.Send, "Applications & Web", null, ActionMacro.PartagerTexte("Partagé depuis Ctrl")),
+            ActionPreset("clipboard_fill", "Remplir le Presse-Papier", Icons.Default.ContentPaste, "Applications & Web", null, ActionMacro.RemplirPressePapier("")),
+            ActionPreset("send_intent", "Envoyer un Intent", Icons.Default.Send, "Applications & Web", null, ActionMacro.EnvoyerIntent(action = "android.intent.action.VIEW")),
+            ActionPreset("http_request", "Requête HTTP", Icons.Default.Http, "Applications & Web", null, ActionMacro.RequeteHttp(url = "https://", methode = MethodeHttp.GET)),
+            ActionPreset("json_parse", "Analyse JSON", Icons.Default.DataObject, "Applications & Web", null, ActionMacro.AnalyseJson()),
 
             // Connectivité
             ActionPreset("wifi_toggle", "Configurer le Wi-Fi", Icons.Default.Wifi, "Connectivité", ActionConfigType.WIFI, ActionMacro.BasculerWifi(true)),
@@ -1503,8 +1542,13 @@ private fun CatalogueActionsDialog(
             ActionPreset("wait", "Attendre avant la Prochaine Action", Icons.Default.Timer, "Contrôle de Flux", ActionConfigType.ATTENDRE, ActionMacro.Attendre(2)),
             ActionPreset("emergency_stop", "Arrêt d'Urgence", Icons.Default.Cancel, "Contrôle de Flux", null, ActionMacro.ArretUrgence("Arrêt demandé")),
 
+            // Notifications (complément)
+            ActionPreset("clear_notifs", "Effacer les Notifications", Icons.Default.ClearAll, "Notifications & Messagerie", null, ActionMacro.EffacerNotifications()),
+
             // Variables & IA
             ActionPreset("set_var", "Définir une variable", Icons.Default.DataObject, "Variables & IA", ActionConfigType.VARIABLE, ActionMacro.DefinirVariable("statut", "actif")),
+            ActionPreset("manip_liste", "Manipulation des Tableaux", Icons.Default.List, "Variables & IA", null, ActionMacro.ManipulerListe()),
+            ActionPreset("verif_texte_ecran", "Vérifier le Texte à l'Écran (OCR)", Icons.Default.FindInPage, "Variables & IA", ActionConfigType.VERIF_TEXTE_ECRAN, ActionMacro.VerifierTexteEcran()),
             ActionPreset("ai_query", "AI LLM Query (Gemini)", Icons.Default.Psychology, "Variables & IA", ActionConfigType.IA_GEMINI, ActionMacro.AppelIA("Résumer les notifications récentes"))
         )
     }
@@ -1812,6 +1856,20 @@ private fun ConfigurerActionDialog(
                             maxLines = 3
                         )
                     }
+                    ActionConfigType.VERIF_TEXTE_ECRAN -> {
+                        Text("Vérifier un texte à l'écran :", fontSize = 13.sp, color = CtrlColor.SlateSmoke)
+                        OutlinedTextField(
+                            value = uiTargetText,
+                            onValueChange = { uiTargetText = it },
+                            label = { Text("Texte ou expression régulière recherchée") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            "Le résultat (trouvé/non trouvé + texte correspondant) est stocké dans des variables, utilisables ensuite dans une 'Clause Si'.",
+                            fontSize = 11.sp,
+                            color = CtrlColor.SlateSmoke
+                        )
+                    }
                     null -> {}
                 }
             }
@@ -1835,6 +1893,7 @@ private fun ConfigurerActionDialog(
                         ActionConfigType.INTERFACE_UI -> ActionMacro.ActionUI(TypeGesteUI.CLIC, TypeSelecteur.TEXTE, uiTargetText)
                         ActionConfigType.VARIABLE -> ActionMacro.DefinirVariable(varName, varVal)
                         ActionConfigType.IA_GEMINI -> ActionMacro.AppelIA(aiPrompt)
+                        ActionConfigType.VERIF_TEXTE_ECRAN -> ActionMacro.VerifierTexteEcran(motifRegex = uiTargetText)
                         null -> preset.defaultAction
                     }
                     onConfirm(act)

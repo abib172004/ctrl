@@ -10,6 +10,7 @@ import com.example.data.local.room.CtrlDatabase
 import com.example.data.repository.LogRepositoryImpl
 import com.example.data.repository.MacroRepositoryImpl
 import com.example.data.repository.VariableRepositoryImpl
+import com.example.data.triggers.scheduler.TriggerScheduler
 import com.example.domain.model.Trigger
 import com.example.domain.usecase.EvaluerConditionsUseCase
 import com.example.domain.usecase.ExecuterMacroUseCase
@@ -25,6 +26,14 @@ import kotlinx.coroutines.launch
  * Conforme aux sections 8.1 et 10.1 du cahier des charges Ctrl.
  */
 class SystemEventReceiver : BroadcastReceiver() {
+
+    companion object {
+        // État du dernier appel connu, conservé au niveau process (les instances de
+        // BroadcastReceiver sont recréées à chaque réception) pour distinguer
+        // appel sortant / manqué / terminé à partir des transitions IDLE/RINGING/OFFHOOK.
+        @Volatile
+        private var dernierEtatAppel: String? = null
+    }
 
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
@@ -42,6 +51,9 @@ class SystemEventReceiver : BroadcastReceiver() {
             when (action) {
                 Intent.ACTION_BOOT_COMPLETED -> {
                     CtrlForegroundService.demarrer(context)
+                    // Replanifie tous les triggers temporels (HeureFixe / Intervalle) via
+                    // AlarmManager/WorkManager, qui ne survivent pas nativement au redémarrage.
+                    TriggerScheduler.reschedulerTout(context, macros)
                     macros.filter { it.trigger is Trigger.DemarrageAppareil }
                         .forEach { executerUseCase.executer(it) }
                 }
@@ -96,6 +108,9 @@ class SystemEventReceiver : BroadcastReceiver() {
 
                 TelephonyManager.ACTION_PHONE_STATE_CHANGED -> {
                     val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
+                    val etatPrecedent = dernierEtatAppel
+                    dernierEtatAppel = state
+
                     if (state == TelephonyManager.EXTRA_STATE_RINGING) {
                         @Suppress("DEPRECATION")
                         val incomingNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER) ?: ""
@@ -111,6 +126,23 @@ class SystemEventReceiver : BroadcastReceiver() {
                                     executerUseCase.executer(m)
                                 }
                             }
+                        }
+                    } else if (state == TelephonyManager.EXTRA_STATE_OFFHOOK) {
+                        if (etatPrecedent == null || etatPrecedent == TelephonyManager.EXTRA_STATE_IDLE) {
+                            // IDLE -> OFFHOOK direct (sans sonnerie préalable) = appel sortant composé par l'utilisateur
+                            macros.filter { it.trigger is Trigger.AppelSortant }
+                                .forEach { executerUseCase.executer(it) }
+                        }
+                        // RINGING -> OFFHOOK = appel entrant décroché, déjà couvert par le trigger AppelEntrant ci-dessus
+                    } else if (state == TelephonyManager.EXTRA_STATE_IDLE) {
+                        if (etatPrecedent == TelephonyManager.EXTRA_STATE_RINGING) {
+                            // RINGING -> IDLE sans passer par OFFHOOK = appel manqué
+                            macros.filter { it.trigger is Trigger.AppelManque }
+                                .forEach { executerUseCase.executer(it) }
+                        } else if (etatPrecedent == TelephonyManager.EXTRA_STATE_OFFHOOK) {
+                            // OFFHOOK -> IDLE = fin d'appel (entrant ou sortant)
+                            macros.filter { it.trigger is Trigger.AppelTermine }
+                                .forEach { executerUseCase.executer(it) }
                         }
                     }
                 }

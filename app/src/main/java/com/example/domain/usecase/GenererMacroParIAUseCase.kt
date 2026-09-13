@@ -4,9 +4,13 @@ import com.example.domain.model.*
 import java.util.UUID
 
 /**
- * Moteur de synthèse IA pour la création de macro en langage naturel
- * Analyse la requête utilisateur (français ou anglais), identifie le déclencheur,
- * les conditions et les actions appropriées, et produit une Macro validée.
+ * Moteur de repli LOCAL (mots-clés, sans aucun appel réseau) utilisé UNIQUEMENT quand
+ * l'appel réel à Gemini échoue (pas de clé API, pas de réseau, réponse invalide) — voir
+ * [GenererMacroAvecGeminiUseCase], qui est le point d'entrée réel du Générateur IA et
+ * signale explicitement dans l'UI quand ce repli est utilisé, pour ne jamais laisser
+ * croire à l'utilisateur qu'une vraie IA a répondu.
+ * Analyse la requête utilisateur (français), identifie le déclencheur,
+ * les conditions et les actions appropriées par correspondance de mots-clés.
  */
 class GenererMacroParIAUseCase {
 

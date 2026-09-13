@@ -27,6 +27,37 @@ sealed class Trigger {
         override val categorie = CategorieTrigger.APPEL_SMS
     }
 
+    data class AppelSortant(
+        override val id: String = "trigger_call_out",
+        val numeroFiltre: String? = null
+    ) : Trigger() {
+        override val label = if (numeroFiltre.isNullOrBlank()) "Appel Sortant" else "Appel sortant vers $numeroFiltre"
+        override val categorie = CategorieTrigger.APPEL_SMS
+    }
+
+    data class AppelManque(
+        override val id: String = "trigger_call_missed",
+        val numeroFiltre: String? = null
+    ) : Trigger() {
+        override val label = if (numeroFiltre.isNullOrBlank()) "Appel Manqué" else "Appel manqué de $numeroFiltre"
+        override val categorie = CategorieTrigger.APPEL_SMS
+    }
+
+    data class AppelTermine(
+        override val id: String = "trigger_call_ended"
+    ) : Trigger() {
+        override val label = "Appel Terminé"
+        override val categorie = CategorieTrigger.APPEL_SMS
+    }
+
+    data class SmsEnvoye(
+        override val id: String = "trigger_sms_sent",
+        val destinataireFiltre: String? = null
+    ) : Trigger() {
+        override val label = if (destinataireFiltre.isNullOrBlank()) "SMS Envoyé" else "SMS envoyé à $destinataireFiltre"
+        override val categorie = CategorieTrigger.APPEL_SMS
+    }
+
     // 2. Batterie & Alimentation
     data class NiveauBatterie(
         override val id: String = "trigger_battery_lvl",
@@ -42,6 +73,23 @@ sealed class Trigger {
         val connectee: Boolean = true
     ) : Trigger() {
         override val label = if (connectee) "Chargeur Connecté" else "Chargeur Débranché"
+        override val categorie = CategorieTrigger.BATTERIE
+    }
+
+    data class TemperatureBatterie(
+        override val id: String = "trigger_battery_temp",
+        val seuilCelsius: Int = 40,
+        val superieur: Boolean = true
+    ) : Trigger() {
+        override val label = "Température batterie ${if (superieur) ">" else "<"} $seuilCelsius°C"
+        override val categorie = CategorieTrigger.BATTERIE
+    }
+
+    data class EconomiseurBatterie(
+        override val id: String = "trigger_battery_saver",
+        val actif: Boolean = true
+    ) : Trigger() {
+        override val label = if (actif) "Économiseur de batterie activé" else "Économiseur de batterie désactivé"
         override val categorie = CategorieTrigger.BATTERIE
     }
 
@@ -72,6 +120,30 @@ sealed class Trigger {
         override val categorie = CategorieTrigger.CONNECTIVITE
     }
 
+    data class VpnState(
+        override val id: String = "trigger_vpn",
+        val actif: Boolean = true
+    ) : Trigger() {
+        override val label = if (actif) "VPN Activé" else "VPN Désactivé"
+        override val categorie = CategorieTrigger.CONNECTIVITE
+    }
+
+    data class UsbConnexion(
+        override val id: String = "trigger_usb",
+        val connecte: Boolean = true
+    ) : Trigger() {
+        override val label = if (connecte) "USB Connecté" else "USB Déconnecté"
+        override val categorie = CategorieTrigger.CONNECTIVITE
+    }
+
+    data class HotspotState(
+        override val id: String = "trigger_hotspot",
+        val actif: Boolean = true
+    ) : Trigger() {
+        override val label = if (actif) "Point d'Accès Activé" else "Point d'Accès Désactivé"
+        override val categorie = CategorieTrigger.CONNECTIVITE
+    }
+
     // 4. Date & Heure
     data class HeureFixe(
         override val id: String = "trigger_time",
@@ -99,6 +171,27 @@ sealed class Trigger {
         val estOuverte: Boolean = true
     ) : Trigger() {
         override val label = "$appName ${if (estOuverte) "ouverte" else "fermée"}"
+        override val categorie = CategorieTrigger.APPLICATIONS
+    }
+
+    data class ContenuEcran(
+        override val id: String = "trigger_screen_content",
+        val motifRegex: String = "",
+        val appSource: String? = null
+    ) : Trigger() {
+        override val label = if (appSource.isNullOrBlank()) {
+            "Contenu d'écran correspond à \"$motifRegex\""
+        } else {
+            "Contenu de $appSource correspond à \"$motifRegex\""
+        }
+        override val categorie = CategorieTrigger.APPLICATIONS
+    }
+
+    data class ClicUI(
+        override val id: String = "trigger_ui_click",
+        val texteCible: String = ""
+    ) : Trigger() {
+        override val label = "Clic sur l'élément \"$texteCible\""
         override val categorie = CategorieTrigger.APPLICATIONS
     }
 
@@ -135,10 +228,65 @@ sealed class Trigger {
         override val categorie = CategorieTrigger.EVENEMENT_APPAREIL
     }
 
+    data class CapteurLuminosite(
+        override val id: String = "trigger_light_sensor",
+        val seuilLux: Int = 10,
+        val inferieur: Boolean = true
+    ) : Trigger() {
+        override val label = "Luminosité ${if (inferieur) "<" else ">"} $seuilLux lux"
+        override val categorie = CategorieTrigger.EVENEMENT_APPAREIL
+    }
+
+    data class CapteurProximite(
+        override val id: String = "trigger_proximity_sensor",
+        val proche: Boolean = true
+    ) : Trigger() {
+        override val label = if (proche) "Objet à proximité" else "Plus d'objet à proximité"
+        override val categorie = CategorieTrigger.EVENEMENT_APPAREIL
+    }
+
+    data class OrientationEcran(
+        override val id: String = "trigger_orientation",
+        val portrait: Boolean = true
+    ) : Trigger() {
+        override val label = if (portrait) "Orientation Portrait" else "Orientation Paysage"
+        override val categorie = CategorieTrigger.EVENEMENT_APPAREIL
+    }
+
     data class DemarrageAppareil(
         override val id: String = "trigger_boot"
     ) : Trigger() {
         override val label = "Démarrage de l'appareil"
+        override val categorie = CategorieTrigger.EVENEMENT_APPAREIL
+    }
+
+    data class EcranDeverrouille(
+        override val id: String = "trigger_screen_unlocked"
+    ) : Trigger() {
+        override val label = "Écran Déverrouillé"
+        override val categorie = CategorieTrigger.EVENEMENT_APPAREIL
+    }
+
+    data class TorcheState(
+        override val id: String = "trigger_torch",
+        val allumee: Boolean = true
+    ) : Trigger() {
+        override val label = if (allumee) "Torche Allumée" else "Torche Éteinte"
+        override val categorie = CategorieTrigger.EVENEMENT_APPAREIL
+    }
+
+    data class ModeSilencieux(
+        override val id: String = "trigger_silent_mode",
+        val actif: Boolean = true
+    ) : Trigger() {
+        override val label = if (actif) "Mode Silencieux Activé" else "Mode Silencieux Désactivé"
+        override val categorie = CategorieTrigger.EVENEMENT_APPAREIL
+    }
+
+    data class PressePapierModifie(
+        override val id: String = "trigger_clipboard"
+    ) : Trigger() {
+        override val label = "Modification du Presse-Papier"
         override val categorie = CategorieTrigger.EVENEMENT_APPAREIL
     }
 

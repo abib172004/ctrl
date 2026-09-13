@@ -716,6 +716,22 @@ private fun getTriggerIcon(trigger: Trigger): ImageVector {
         is Trigger.AppState -> Icons.Outlined.Apps
         is Trigger.DemarrageAppareil -> Icons.Outlined.PowerSettingsNew
         is Trigger.Manuel -> Icons.Outlined.TouchApp
+        is Trigger.AppelSortant, is Trigger.AppelManque, is Trigger.AppelTermine -> Icons.Outlined.Call
+        is Trigger.SmsEnvoye -> Icons.Outlined.Send
+        is Trigger.TemperatureBatterie -> Icons.Outlined.Thermostat
+        is Trigger.EconomiseurBatterie -> Icons.Outlined.BatteryAlert
+        is Trigger.VpnState -> Icons.Outlined.VpnKey
+        is Trigger.UsbConnexion -> Icons.Outlined.Usb
+        is Trigger.HotspotState -> Icons.Outlined.WifiTethering
+        is Trigger.CapteurLuminosite -> Icons.Outlined.WbSunny
+        is Trigger.CapteurProximite -> Icons.Outlined.Sensors
+        is Trigger.OrientationEcran -> Icons.Outlined.ScreenRotation
+        is Trigger.EcranDeverrouille -> Icons.Outlined.LockOpen
+        is Trigger.TorcheState -> Icons.Outlined.FlashlightOn
+        is Trigger.ModeSilencieux -> Icons.Outlined.VolumeOff
+        is Trigger.PressePapierModifie -> Icons.Outlined.ContentPaste
+        is Trigger.ContenuEcran -> Icons.Outlined.FindInPage
+        is Trigger.ClicUI -> Icons.Outlined.TouchApp
         else -> Icons.Outlined.Bolt
     }
 }
@@ -739,6 +755,16 @@ private fun getActionIcon(action: ActionMacro): ImageVector {
         is ActionMacro.OuvrirApp -> Icons.Outlined.Launch
         is ActionMacro.OuvrirUrl -> Icons.Outlined.Language
         is ActionMacro.TexteParSyntheseVocale -> Icons.Outlined.RecordVoiceOver
+        is ActionMacro.PasserAppel -> Icons.Outlined.Call
+        is ActionMacro.PartagerTexte -> Icons.AutoMirrored.Outlined.Send
+        is ActionMacro.RemplirPressePapier -> Icons.Outlined.ContentPaste
+        is ActionMacro.EnvoyerIntent -> Icons.Outlined.Send
+        is ActionMacro.RequeteHttp -> Icons.Outlined.Http
+        is ActionMacro.AnalyseJson -> Icons.Outlined.DataObject
+        is ActionMacro.EffacerNotifications -> Icons.Outlined.ClearAll
+        is ActionMacro.OuvrirJournalAppels -> Icons.Outlined.History
+        is ActionMacro.ManipulerListe -> Icons.AutoMirrored.Outlined.List
+        is ActionMacro.VerifierTexteEcran -> Icons.Outlined.FindInPage
         else -> Icons.Outlined.CheckCircle
     }
 }

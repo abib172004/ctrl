@@ -1,8 +1,10 @@
 package com.example.data.repository
 
+import android.content.Context
 import com.example.data.local.room.CtrlDao
 import com.example.data.local.room.JsonConverters
 import com.example.data.local.room.MacroEntity
+import com.example.data.triggers.scheduler.TriggerScheduler
 import com.example.domain.model.Macro
 import com.example.domain.repository.MacroRepository
 import kotlinx.coroutines.flow.Flow
@@ -11,7 +13,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class MacroRepositoryImpl(
-    private val dao: CtrlDao
+    private val dao: CtrlDao,
+    private val context: Context? = null
 ) : MacroRepository {
 
     override fun getMacros(): Flow<List<Macro>> {
@@ -24,14 +27,23 @@ class MacroRepositoryImpl(
 
     override suspend fun insertOrUpdate(macro: Macro) {
         dao.insertOrUpdateMacro(MacroEntity.fromDomain(macro))
+        context?.let { TriggerScheduler.schedule(it, macro) }
     }
 
     override suspend fun delete(id: String) {
         dao.deleteMacroById(id)
+        context?.let { TriggerScheduler.cancel(it, id) }
     }
 
     override suspend fun setMacroActive(id: String, active: Boolean) {
         dao.updateMacroActive(id, active)
+        context?.let { ctx ->
+            if (active) {
+                getMacroById(id)?.let { TriggerScheduler.schedule(ctx, it) }
+            } else {
+                TriggerScheduler.cancel(ctx, id)
+            }
+        }
     }
 
     override suspend fun recordExecution(id: String, succes: Boolean) {

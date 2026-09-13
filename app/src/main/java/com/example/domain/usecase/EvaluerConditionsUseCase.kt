@@ -1,5 +1,6 @@
 package com.example.domain.usecase
 
+import android.app.KeyguardManager
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
@@ -8,9 +9,11 @@ import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
+import android.os.Build
 import android.os.PowerManager
 import com.example.data.accessibility.CtrlAccessibilityService
 import com.example.domain.model.Condition
+import com.example.domain.model.OperateurComparaison
 import com.example.domain.model.OperateurLogique
 import com.example.domain.repository.VariableRepository
 import java.util.Calendar
@@ -135,6 +138,54 @@ class EvaluerConditionsUseCase(
             is Condition.VariableValeur -> {
                 val valeurReelle = variableRepository.getValue(condition.nomVariable)
                 valeurReelle.equals(condition.valeurAttendue, ignoreCase = true)
+            }
+
+            is Condition.VariableComparaison -> {
+                val brute = variableRepository.getValue(condition.nomVariable) ?: ""
+                val brutNum = brute.toDoubleOrNull()
+                val attenduNum = condition.valeur.toDoubleOrNull()
+                when (condition.operateur) {
+                    OperateurComparaison.EGAL -> brute.equals(condition.valeur, ignoreCase = true)
+                    OperateurComparaison.DIFFERENT -> !brute.equals(condition.valeur, ignoreCase = true)
+                    OperateurComparaison.CONTIENT -> brute.contains(condition.valeur, ignoreCase = true)
+                    OperateurComparaison.SUPERIEUR -> {
+                        if (brutNum != null && attenduNum != null) brutNum > attenduNum
+                        else brute > condition.valeur
+                    }
+                    OperateurComparaison.INFERIEUR -> {
+                        if (brutNum != null && attenduNum != null) brutNum < attenduNum
+                        else brute < condition.valeur
+                    }
+                }
+            }
+
+            is Condition.VpnActif -> {
+                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+                val vpnActif = caps?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+                if (condition.doitEtreActif) vpnActif else !vpnActif
+            }
+
+            is Condition.EconomiseurBatterieActif -> {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                val actif = pm?.isPowerSaveMode == true
+                if (condition.doitEtreActif) actif else !actif
+            }
+
+            is Condition.AppareilVerrouille -> {
+                val km = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+                val verrouille = km?.isKeyguardLocked == true
+                if (condition.doitEtreVerrouille) verrouille else !verrouille
+            }
+
+            is Condition.JourDuMois -> {
+                val jourActuel = cal.get(Calendar.DAY_OF_MONTH)
+                condition.jours.contains(jourActuel)
+            }
+
+            is Condition.MacroEnCoursExecution -> {
+                val enCours = ExecuterMacroUseCase.estEnCoursDExecution(condition.macroId)
+                if (condition.doitEtreEnCours) enCours else !enCours
             }
 
             is Condition.Compose -> {

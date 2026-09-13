@@ -170,6 +170,90 @@ sealed class ActionMacro {
         override val label = "Exécuter macro : \"$nomCible\""
         override val categorie = CategorieAction.FLUX
     }
+
+    data class PasserAppel(
+        val numero: String = ""
+    ) : ActionMacro() {
+        override val label = "Passer un appel à $numero"
+        override val categorie = CategorieAction.APPLICATIONS
+    }
+
+    data class PartagerTexte(
+        val texte: String = ""
+    ) : ActionMacro() {
+        override val label = "Partager le texte : \"$texte\""
+        override val categorie = CategorieAction.APPAREIL
+    }
+
+    data class RemplirPressePapier(
+        val texte: String = ""
+    ) : ActionMacro() {
+        override val label = "Copier dans le presse-papier : \"$texte\""
+        override val categorie = CategorieAction.APPAREIL
+    }
+
+    data class EnvoyerIntent(
+        val action: String = "",
+        val packageCible: String = "",
+        val extraCle: String = "",
+        val extraValeur: String = ""
+    ) : ActionMacro() {
+        override val label = "Envoyer Intent : $action"
+        override val categorie = CategorieAction.APPLICATIONS
+    }
+
+    data class RequeteHttp(
+        val url: String = "https://",
+        val methode: MethodeHttp = MethodeHttp.GET,
+        val corpsJson: String = "",
+        val headerAuth: String = "",
+        val variableSortie: String = "reponse_http"
+    ) : ActionMacro() {
+        override val label = "Requête HTTP ${methode.name} $url -> {$variableSortie}"
+        override val categorie = CategorieAction.RESEAU
+    }
+
+    data class AnalyseJson(
+        val jsonSource: String = "",
+        val cheminCle: String = "",
+        val variableSortie: String = "valeur_json"
+    ) : ActionMacro() {
+        override val label = "Extraire '$cheminCle' du JSON -> {$variableSortie}"
+        override val categorie = CategorieAction.RESEAU
+    }
+
+    data class EffacerNotifications(
+        val toutesLesNotifications: Boolean = true
+    ) : ActionMacro() {
+        override val label = "Effacer les notifications"
+        override val categorie = CategorieAction.NOTIFICATION
+    }
+
+    data class OuvrirJournalAppels(
+        val vide: Boolean = true
+    ) : ActionMacro() {
+        override val label = "Ouvrir le journal d'appels"
+        override val categorie = CategorieAction.APPLICATIONS
+    }
+
+    data class ManipulerListe(
+        val nomListe: String = "ma_liste",
+        val operation: OperationListe = OperationListe.AJOUTER,
+        val argument: String = "",
+        val variableSortie: String = "resultat_liste"
+    ) : ActionMacro() {
+        override val label = "Liste '$nomListe' : ${operation.name} -> {$variableSortie}"
+        override val categorie = CategorieAction.VARIABLES
+    }
+
+    data class VerifierTexteEcran(
+        val motifRegex: String = "",
+        val variableTrouve: String = "texte_trouve",
+        val variableContenu: String = "contenu_ecran"
+    ) : ActionMacro() {
+        override val label = "Vérifier texte à l'écran : \"$motifRegex\" -> {$variableTrouve}"
+        override val categorie = CategorieAction.INTERFACE_UI
+    }
 }
 
 enum class OperationTexte {
@@ -209,7 +293,23 @@ enum class CategorieAction(val titre: String) {
     INTERFACE_UI("Interface & Accessibilité"),
     FLUX("Contrôle de Flux"),
     VARIABLES("Variables"),
-    INTELLIGENCE_ARTIFICIELLE("Intelligence Artificielle")
+    INTELLIGENCE_ARTIFICIELLE("Intelligence Artificielle"),
+    RESEAU("Web & Réseau")
+}
+
+enum class MethodeHttp {
+    GET,
+    POST,
+    PUT,
+    DELETE
+}
+
+enum class OperationListe {
+    AJOUTER,
+    SUPPRIMER_INDEX,
+    OBTENIR_INDEX,
+    LONGUEUR,
+    JOINDRE
 }
 
 enum class TypeGesteUI {

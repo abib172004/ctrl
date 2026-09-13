@@ -1,5 +1,9 @@
 package com.example.presentation.settings
 
+import android.content.Context
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -121,6 +125,138 @@ fun SettingsScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Section 2 : Permissions Android à l'exécution
+        var permissionsManquantes by remember { mutableStateOf(PermissionsHelper.manquantes(context)) }
+        val permissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions()
+        ) {
+            permissionsManquantes = PermissionsHelper.manquantes(context)
+        }
+        LaunchedEffect(Unit) {
+            permissionsManquantes = PermissionsHelper.manquantes(context)
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = CardShape,
+            colors = CardDefaults.cardColors(containerColor = CtrlColor.PureWhite),
+            border = BorderStroke(1.dp, CtrlColor.LinenBeige)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Permissions Android", color = CtrlColor.WineInk, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            text = if (permissionsManquantes.isEmpty()) "Toutes accordées" else "${permissionsManquantes.size} permission(s) manquante(s)",
+                            color = if (permissionsManquantes.isEmpty()) CtrlColor.WineInk else CtrlColor.AlertRed,
+                            fontSize = 12.sp
+                        )
+                    }
+                    CtrlStatusBadge(active = permissionsManquantes.isEmpty())
+                }
+
+                if (permissionsManquantes.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    permissionsManquantes.forEach { p ->
+                        Text(
+                            text = "• ${p.label} — ${p.raison}",
+                            color = CtrlColor.SlateSmoke,
+                            fontSize = 11.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    CtrlPrimaryButton(
+                        text = "Activer les permissions manquantes",
+                        onClick = { permissionLauncher.launch(permissionsManquantes.map { it.permission }.toTypedArray()) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Section 3 : Batterie — exclusion de l'optimisation (fiabilité arrière-plan)
+        var batterieOptimisee by remember {
+            mutableStateOf(
+                !(context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+                    .isIgnoringBatteryOptimizations(context.packageName)
+            )
+        }
+        LaunchedEffect(Unit) {
+            batterieOptimisee = !(context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager)
+                .isIgnoringBatteryOptimizations(context.packageName)
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = CardShape,
+            colors = CardDefaults.cardColors(containerColor = CtrlColor.PureWhite),
+            border = BorderStroke(1.dp, CtrlColor.LinenBeige)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Optimisation de batterie", color = CtrlColor.WineInk, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            text = if (batterieOptimisee) "Android peut tuer Ctrl en arrière-plan" else "Ctrl est exclu (fiabilité maximale)",
+                            color = if (batterieOptimisee) CtrlColor.AlertRed else CtrlColor.WineInk,
+                            fontSize = 12.sp
+                        )
+                    }
+                    CtrlStatusBadge(active = !batterieOptimisee)
+                }
+                if (batterieOptimisee) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    CtrlOutlinedButton(
+                        text = "Désactiver l'optimisation pour Ctrl",
+                        onClick = {
+                            try {
+                                val intent = android.content.Intent(
+                                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    android.net.Uri.parse("package:${context.packageName}")
+                                )
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val am = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+                    if (!am.canScheduleExactAlarms()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "⚠ Alarmes exactes non autorisées : les macros \"Heure Fixe\" peuvent avoir du retard.",
+                            color = CtrlColor.AlertRed,
+                            fontSize = 11.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        CtrlOutlinedButton(
+                            text = "Autoriser les alarmes exactes",
+                            onClick = {
+                                context.startActivity(android.content.Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
             }
         }
 

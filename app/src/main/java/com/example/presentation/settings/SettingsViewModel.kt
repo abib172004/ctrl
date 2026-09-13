@@ -9,12 +9,14 @@ import com.example.data.accessibility.CtrlAccessibilityService
 import com.example.data.local.room.CtrlDatabase
 import com.example.data.repository.MacroRepositoryImpl
 import com.example.data.repository.VariableRepositoryImpl
+import com.example.data.triggers.scheduler.TriggerScheduler
 import com.example.domain.model.TypeVariable
 import com.example.domain.model.Variable
 import com.example.service.CtrlForegroundService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -32,7 +34,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val dao = CtrlDatabase.getInstance(application).ctrlDao()
     private val variableRepository = VariableRepositoryImpl(dao)
-    private val macroRepository = MacroRepositoryImpl(dao)
+    private val macroRepository = MacroRepositoryImpl(dao, application)
     private val prefs = application.getSharedPreferences("ctrl_prefs", Context.MODE_PRIVATE)
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -110,6 +112,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun importerConfiguration(json: String) {
         viewModelScope.launch {
             val count = macroRepository.importMacrosJson(json)
+            // Le flux d'import écrit directement en base (bypass insertOrUpdate) :
+            // on replanifie explicitement les triggers temporels des macros importées.
+            val macrosActives = macroRepository.getMacros().first().filter { it.active }
+            TriggerScheduler.reschedulerTout(getApplication(), macrosActives)
             _uiState.update {
                 it.copy(feedbackMessage = "$count macro(s) importée(s) avec succès.")
             }

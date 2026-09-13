@@ -7,6 +7,7 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.view.accessibility.AccessibilityEvent
 import com.example.data.local.room.CtrlDatabase
+import com.example.data.ocr.OcrEngine
 import com.example.data.repository.LogRepositoryImpl
 import com.example.data.repository.MacroRepositoryImpl
 import com.example.data.repository.VariableRepositoryImpl
@@ -27,6 +28,13 @@ import java.lang.ref.WeakReference
 class CtrlAccessibilityService : AccessibilityService() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Default)
+    private val ocrEngine = OcrEngine()
+
+    // Anti-spam : TYPE_WINDOW_CONTENT_CHANGED peut se déclencher des dizaines de fois par
+    // seconde sur une UI animée. On limite la vérification à 1 fois / 800ms, et on ne
+    // redéclenche une macro que sur un front (motif absent -> présent), pas en continu.
+    private var derniereVerifContenuMs = 0L
+    private val etatMotifTrouve = mutableMapOf<String, Boolean>()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -49,6 +57,75 @@ class CtrlAccessibilityService : AccessibilityService() {
                 val texteNotification = event.text.joinToString(" ")
                 verifierDeclencheursNotification(pkgName, texteNotification)
             }
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                val maintenant = System.currentTimeMillis()
+                if (maintenant - derniereVerifContenuMs >= 800L) {
+                    derniereVerifContenuMs = maintenant
+                    verifierDeclencheursContenuEcran(pkgName)
+                }
+            }
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                val noeudClique = event.source
+                val texteClique = noeudClique?.text?.toString()
+                    ?: noeudClique?.contentDescription?.toString()
+                    ?: event.text?.joinToString(" ")
+                if (!texteClique.isNullOrBlank()) {
+                    verifierDeclencheursClicUI(texteClique)
+                }
+            }
+        }
+    }
+
+    private fun verifierDeclencheursClicUI(texteClique: String) {
+        serviceScope.launch {
+            try {
+                val dao = CtrlDatabase.getInstance(applicationContext).ctrlDao()
+                val macroRepo = MacroRepositoryImpl(dao)
+                val varRepo = VariableRepositoryImpl(dao)
+                val logRepo = LogRepositoryImpl(dao)
+                val evaluerUseCase = EvaluerConditionsUseCase(applicationContext, varRepo)
+                val executerUseCase = ExecuterMacroUseCase(applicationContext, evaluerUseCase, macroRepo, varRepo, logRepo)
+
+                val macros = macroRepo.getMacros().first().filter { it.active }
+                for (m in macros) {
+                    val t = m.trigger
+                    if (t is Trigger.ClicUI && t.texteCible.isNotBlank() &&
+                        texteClique.contains(t.texteCible, ignoreCase = true)
+                    ) {
+                        executerUseCase.executer(m)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun verifierDeclencheursContenuEcran(pkgName: String) {
+        val racine = rootInActiveWindow ?: return
+        val textes = ocrEngine.extraireTextesNode(racine)
+        serviceScope.launch {
+            try {
+                val dao = CtrlDatabase.getInstance(applicationContext).ctrlDao()
+                val macroRepo = MacroRepositoryImpl(dao)
+                val varRepo = VariableRepositoryImpl(dao)
+                val logRepo = LogRepositoryImpl(dao)
+                val evaluerUseCase = EvaluerConditionsUseCase(applicationContext, varRepo)
+                val executerUseCase = ExecuterMacroUseCase(applicationContext, evaluerUseCase, macroRepo, varRepo, logRepo)
+
+                val macros = macroRepo.getMacros().first().filter { it.active }
+                for (m in macros) {
+                    val t = m.trigger
+                    if (t is Trigger.ContenuEcran && t.motifRegex.isNotBlank()) {
+                        val sourceMatch = t.appSource.isNullOrBlank() || t.appSource.equals(pkgName, ignoreCase = true)
+                        if (!sourceMatch) continue
+                        val trouve = ocrEngine.verifierPresenceTexte(textes, t.motifRegex)
+                        val etaitTrouve = etatMotifTrouve[m.id] ?: false
+                        if (trouve && !etaitTrouve) {
+                            executerUseCase.executer(m)
+                        }
+                        etatMotifTrouve[m.id] = trouve
+                    }
+                }
+            } catch (_: Exception) {}
         }
     }
 

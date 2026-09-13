@@ -6,15 +6,29 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
+import android.database.ContentObserver
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.os.BatteryManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
+import android.provider.Telephony
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
@@ -27,12 +41,16 @@ import com.example.domain.usecase.EvaluerConditionsUseCase
 import com.example.domain.usecase.ExecuterMacroUseCase
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
-import java.util.Calendar
 import kotlin.math.sqrt
 
 /**
- * Service d'arrière-plan permanent pour l'orchestration des macros Ctrl
- * Écoute continue des capteurs physiques, récepteurs système et bouton d'arrêt d'urgence.
+ * Service d'arrière-plan permanent pour l'orchestration des macros Ctrl.
+ * Écoute continue des capteurs physiques, récepteurs système dynamiques et bouton d'arrêt d'urgence.
+ * Les déclencheurs temporels (HeureFixe / Intervalle) NE sont plus gérés ici : ils sont
+ * planifiés de façon fiable par [com.example.data.triggers.scheduler.TriggerScheduler]
+ * (AlarmManager / WorkManager), qui survit à Doze et au process kill contrairement à cette
+ * boucle. Ce service reste responsable de tout ce qui exige un process vivant en continu :
+ * capteurs, callbacks système temps réel, presse-papier.
  * Conforme aux sections 8.1, 10.1, 13 et 14 du cahier des charges Ctrl.
  */
 class CtrlForegroundService : Service(), SensorEventListener {
@@ -47,7 +65,27 @@ class CtrlForegroundService : Service(), SensorEventListener {
 
     private var sensorManager: SensorManager? = null
     private var accelerometer: Sensor? = null
+    private var lightSensor: Sensor? = null
+    private var proximitySensor: Sensor? = null
     private var lastShakeTime = 0L
+
+    // États "dernière valeur connue" pour déclenchement sur front (evite le spam de macros
+    // sur des événements système qui peuvent se répéter en continu à état inchangé).
+    private var lastProximityProche: Boolean? = null
+    private var lastOrientationPortrait: Boolean? = null
+    private var lastVpnActif: Boolean? = null
+    private var lastHotspotActif: Boolean? = null
+    private val etatLuminositeDepasse = mutableMapOf<String, Boolean>()
+    private val etatTemperatureDepasse = mutableMapOf<String, Boolean>()
+    private var dernierSmsSortantId: Long = -1L
+
+    private var cameraManager: CameraManager? = null
+    private var torchCallback: CameraManager.TorchCallback? = null
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var clipboardManager: ClipboardManager? = null
+    private var clipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+    private var smsSentObserver: ContentObserver? = null
 
     private val dynamicSystemReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -74,8 +112,12 @@ class CtrlForegroundService : Service(), SensorEventListener {
         startForeground(NOTIFICATION_ID, notification)
 
         enregistrerReceiversSysteme()
-        initialiserCapteurSecousse()
-        lancerBoucleTemporelle()
+        initialiserCapteurs()
+        initialiserCallbackTorche()
+        initialiserCallbackVpn()
+        initialiserEcouteurPressePapier()
+        initialiserObservateurSmsEnvoyes()
+        lancerBoucleEtatsPeriodiques()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -84,6 +126,19 @@ class CtrlForegroundService : Service(), SensorEventListener {
             declencherArretUrgence()
         }
         return START_STICKY
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val portrait = newConfig.orientation == Configuration.ORIENTATION_PORTRAIT
+        if (lastOrientationPortrait != portrait) {
+            lastOrientationPortrait = portrait
+            serviceScope.launch {
+                val macros = macroRepo.getMacros().first().filter { it.active }
+                macros.filter { it.trigger is Trigger.OrientationEcran && (it.trigger as Trigger.OrientationEcran).portrait == portrait }
+                    .forEach { executerUseCase.executer(it) }
+            }
+        }
     }
 
     private fun declencherArretUrgence() {
@@ -102,46 +157,157 @@ class CtrlForegroundService : Service(), SensorEventListener {
             addAction(Intent.ACTION_HEADSET_PLUG)
             addAction(Intent.ACTION_POWER_CONNECTED)
             addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
+            addAction("android.hardware.usb.action.USB_DEVICE_ATTACHED")
+            addAction("android.hardware.usb.action.USB_DEVICE_DETACHED")
         }
         registerReceiver(dynamicSystemReceiver, filter)
     }
 
-    private fun initialiserCapteurSecousse() {
+    private fun initialiserCapteurs() {
         try {
             sensorManager = getSystemService(Context.SENSOR_SERVICE) as? SensorManager
             accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-            accelerometer?.let {
-                sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+            accelerometer?.let { sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_UI) }
+
+            lightSensor = sensorManager?.getDefaultSensor(Sensor.TYPE_LIGHT)
+            lightSensor?.let { sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+
+            proximitySensor = sensorManager?.getDefaultSensor(Sensor.TYPE_PROXIMITY)
+            proximitySensor?.let { sensorManager?.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+        } catch (_: Exception) {}
+    }
+
+    /** CameraManager.TorchCallback est une API publique (API 23+), aucune permission requise. */
+    private fun initialiserCallbackTorche() {
+        try {
+            cameraManager = getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+            val callback = object : CameraManager.TorchCallback() {
+                override fun onTorchModeChanged(cameraId: String, enabled: Boolean) {
+                    serviceScope.launch {
+                        val macros = macroRepo.getMacros().first().filter { it.active }
+                        macros.filter { it.trigger is Trigger.TorcheState && (it.trigger as Trigger.TorcheState).allumee == enabled }
+                            .forEach { executerUseCase.executer(it) }
+                    }
+                }
+            }
+            torchCallback = callback
+            cameraManager?.registerTorchCallback(callback, Handler(Looper.getMainLooper()))
+        } catch (_: Exception) {}
+    }
+
+    /** Détecte le VPN via les capacités réseau (API publique), plutôt qu'un broadcast qui n'existe pas. */
+    private fun initialiserCallbackVpn() {
+        try {
+            connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                    val vpnActif = capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                    if (lastVpnActif != vpnActif) {
+                        lastVpnActif = vpnActif
+                        serviceScope.launch {
+                            val macros = macroRepo.getMacros().first().filter { it.active }
+                            macros.filter { it.trigger is Trigger.VpnState && (it.trigger as Trigger.VpnState).actif == vpnActif }
+                                .forEach { executerUseCase.executer(it) }
+                        }
+                    }
+                }
+            }
+            networkCallback = callback
+            connectivityManager?.registerNetworkCallback(NetworkRequest.Builder().build(), callback)
+        } catch (_: Exception) {}
+    }
+
+    /**
+     * Écoute les changements du presse-papier. Depuis Android 10, seule l'app au premier plan
+     * peut LIRE le contenu ; l'événement de changement reste néanmoins reçu, ce qui suffit
+     * au déclencheur "Modification du Presse-Papier" (sans lecture du contenu copié).
+     */
+    private fun initialiserEcouteurPressePapier() {
+        try {
+            clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            val listener = ClipboardManager.OnPrimaryClipChangedListener {
+                serviceScope.launch {
+                    val macros = macroRepo.getMacros().first().filter { it.active }
+                    macros.filter { it.trigger is Trigger.PressePapierModifie }
+                        .forEach { executerUseCase.executer(it) }
+                }
+            }
+            clipboardListener = listener
+            clipboardManager?.addPrimaryClipChangedListener(listener)
+        } catch (_: Exception) {}
+    }
+
+    /** Observe la table des SMS envoyés (nécessite READ_SMS) pour le déclencheur "SMS Envoyé". */
+    private fun initialiserObservateurSmsEnvoyes() {
+        try {
+            val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) {
+                    super.onChange(selfChange)
+                    serviceScope.launch { verifierDernierSmsEnvoye() }
+                }
+            }
+            smsSentObserver = observer
+            contentResolver.registerContentObserver(Telephony.Sms.Sent.CONTENT_URI, true, observer)
+        } catch (_: Exception) {}
+    }
+
+    private suspend fun verifierDernierSmsEnvoye() {
+        try {
+            val cursor = contentResolver.query(
+                Telephony.Sms.Sent.CONTENT_URI,
+                arrayOf(Telephony.Sms._ID, Telephony.Sms.ADDRESS),
+                null, null,
+                "${Telephony.Sms.DATE} DESC LIMIT 1"
+            )
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val id = it.getLong(it.getColumnIndexOrThrow(Telephony.Sms._ID))
+                    val destinataire = it.getString(it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)) ?: ""
+                    if (id != dernierSmsSortantId) {
+                        dernierSmsSortantId = id
+                        val macros = macroRepo.getMacros().first().filter { m -> m.active }
+                        macros.filter { m ->
+                            val t = m.trigger
+                            t is Trigger.SmsEnvoye && (t.destinataireFiltre.isNullOrBlank() ||
+                                    destinataire.contains(t.destinataireFiltre, ignoreCase = true))
+                        }.forEach { executerUseCase.executer(it) }
+                    }
+                }
             }
         } catch (_: Exception) {}
     }
 
-    private fun lancerBoucleTemporelle() {
+    /**
+     * Boucle de secours à basse fréquence pour les états sans API d'écoute fiable
+     * (point d'accès Wi-Fi : pas de broadcast public documenté). Les déclencheurs
+     * temporels (HeureFixe/Intervalle) NE sont plus vérifiés ici, voir TriggerScheduler.
+     */
+    private fun lancerBoucleEtatsPeriodiques() {
         serviceScope.launch {
             while (isActive) {
-                verifierMacrosTemporelles()
-                delay(30_000L) // Vérification toutes les 30 secondes
+                verifierEtatHotspot()
+                delay(20_000L)
             }
         }
     }
 
-    private suspend fun verifierMacrosTemporelles() {
-        val cal = Calendar.getInstance()
-        val currentHour = cal.get(Calendar.HOUR_OF_DAY)
-        val currentMinute = cal.get(Calendar.MINUTE)
-        val calDay = cal.get(Calendar.DAY_OF_WEEK)
-        val ctrlDay = if (calDay == Calendar.SUNDAY) 7 else calDay - 1
-
-        val macros = macroRepo.getMacros().first().filter { it.active }
-        for (m in macros) {
-            when (val t = m.trigger) {
-                is Trigger.HeureFixe -> {
-                    if (t.heure == currentHour && t.minute == currentMinute && t.jours.contains(ctrlDay)) {
-                        executerUseCase.executer(m)
-                    }
-                }
-                else -> Unit
+    private suspend fun verifierEtatHotspot() {
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager ?: return
+            val methode = wifiManager.javaClass.getMethod("isWifiApEnabled")
+            methode.isAccessible = true
+            val actif = methode.invoke(wifiManager) as? Boolean ?: return
+            if (lastHotspotActif != actif) {
+                lastHotspotActif = actif
+                val macros = macroRepo.getMacros().first().filter { it.active }
+                macros.filter { it.trigger is Trigger.HotspotState && (it.trigger as Trigger.HotspotState).actif == actif }
+                    .forEach { executerUseCase.executer(it) }
             }
+        } catch (_: Exception) {
+            // Reflection sur API cachée : peut échouer selon l'OEM/version, dégradation silencieuse.
         }
     }
 
@@ -155,6 +321,10 @@ class CtrlForegroundService : Service(), SensorEventListener {
             }
             Intent.ACTION_SCREEN_OFF -> {
                 macros.filter { it.trigger is Trigger.EcranState && !(it.trigger as Trigger.EcranState).allume }
+                    .forEach { executerUseCase.executer(it) }
+            }
+            Intent.ACTION_USER_PRESENT -> {
+                macros.filter { it.trigger is Trigger.EcranDeverrouille }
                     .forEach { executerUseCase.executer(it) }
             }
             Intent.ACTION_HEADSET_PLUG -> {
@@ -175,26 +345,95 @@ class CtrlForegroundService : Service(), SensorEventListener {
                 macros.filter { it.trigger is Trigger.Alimentation && !(it.trigger as Trigger.Alimentation).connectee }
                     .forEach { executerUseCase.executer(it) }
             }
+            PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> {
+                val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager
+                val actif = pm?.isPowerSaveMode == true
+                macros.filter { it.trigger is Trigger.EconomiseurBatterie && (it.trigger as Trigger.EconomiseurBatterie).actif == actif }
+                    .forEach { executerUseCase.executer(it) }
+            }
+            AudioManager.RINGER_MODE_CHANGED_ACTION -> {
+                val am = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                val silencieux = am?.ringerMode == AudioManager.RINGER_MODE_SILENT
+                macros.filter { it.trigger is Trigger.ModeSilencieux && (it.trigger as Trigger.ModeSilencieux).actif == silencieux }
+                    .forEach { executerUseCase.executer(it) }
+            }
+            "android.hardware.usb.action.USB_DEVICE_ATTACHED" -> {
+                macros.filter { it.trigger is Trigger.UsbConnexion && (it.trigger as Trigger.UsbConnexion).connecte }
+                    .forEach { executerUseCase.executer(it) }
+            }
+            "android.hardware.usb.action.USB_DEVICE_DETACHED" -> {
+                macros.filter { it.trigger is Trigger.UsbConnexion && !(it.trigger as Trigger.UsbConnexion).connecte }
+                    .forEach { executerUseCase.executer(it) }
+            }
+            Intent.ACTION_BATTERY_CHANGED -> {
+                val tempDixiemes = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1)
+                if (tempDixiemes >= 0) {
+                    val tempCelsius = tempDixiemes / 10.0
+                    for (m in macros) {
+                        val t = m.trigger
+                        if (t is Trigger.TemperatureBatterie) {
+                            val depasse = if (t.superieur) tempCelsius > t.seuilCelsius else tempCelsius < t.seuilCelsius
+                            val etaitDepasse = etatTemperatureDepasse[m.id] ?: false
+                            if (depasse && !etaitDepasse) {
+                                executerUseCase.executer(m)
+                            }
+                            etatTemperatureDepasse[m.id] = depasse
+                        }
+                    }
+                }
+            }
         }
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-            val x = event.values[0]
-            val y = event.values[1]
-            val z = event.values[2]
-            val gForce = sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH
+        val evt = event ?: return
+        when (evt.sensor?.type) {
+            Sensor.TYPE_ACCELEROMETER -> {
+                val x = evt.values[0]
+                val y = evt.values[1]
+                val z = evt.values[2]
+                val gForce = sqrt(x * x + y * y + z * z) / SensorManager.GRAVITY_EARTH
 
-            if (gForce > 2.2f) {
-                val now = System.currentTimeMillis()
-                if (now - lastShakeTime > 1500L) { // Anti-rebond
-                    lastShakeTime = now
+                if (gForce > 2.2f) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastShakeTime > 1500L) { // Anti-rebond
+                        lastShakeTime = now
+                        serviceScope.launch {
+                            val macros = macroRepo.getMacros().first().filter { it.active }
+                            macros.filter { it.trigger is Trigger.Secousse }.forEach {
+                                executerUseCase.executer(it)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Sensor.TYPE_LIGHT -> {
+                val lux = evt.values[0]
+                serviceScope.launch {
+                    val macros = macroRepo.getMacros().first().filter { it.active }
+                    for (m in macros) {
+                        val t = m.trigger
+                        if (t is Trigger.CapteurLuminosite) {
+                            val depasse = if (t.inferieur) lux < t.seuilLux else lux > t.seuilLux
+                            val etaitDepasse = etatLuminositeDepasse[m.id] ?: false
+                            if (depasse && !etaitDepasse) {
+                                executerUseCase.executer(m)
+                            }
+                            etatLuminositeDepasse[m.id] = depasse
+                        }
+                    }
+                }
+            }
+
+            Sensor.TYPE_PROXIMITY -> {
+                val proche = evt.values[0] < (evt.sensor?.maximumRange ?: 5f)
+                if (lastProximityProche != proche) {
+                    lastProximityProche = proche
                     serviceScope.launch {
                         val macros = macroRepo.getMacros().first().filter { it.active }
-                        macros.filterIsInstance<Trigger.Secousse>().forEach { _ -> }
-                        macros.filter { it.trigger is Trigger.Secousse }.forEach {
-                            executerUseCase.executer(it)
-                        }
+                        macros.filter { it.trigger is Trigger.CapteurProximite && (it.trigger as Trigger.CapteurProximite).proche == proche }
+                            .forEach { executerUseCase.executer(it) }
                     }
                 }
             }
@@ -205,8 +444,12 @@ class CtrlForegroundService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
-        unregisterReceiver(dynamicSystemReceiver)
+        try { unregisterReceiver(dynamicSystemReceiver) } catch (_: Exception) {}
         sensorManager?.unregisterListener(this)
+        try { torchCallback?.let { cameraManager?.unregisterTorchCallback(it) } } catch (_: Exception) {}
+        try { networkCallback?.let { connectivityManager?.unregisterNetworkCallback(it) } } catch (_: Exception) {}
+        try { clipboardListener?.let { clipboardManager?.removePrimaryClipChangedListener(it) } } catch (_: Exception) {}
+        try { smsSentObserver?.let { contentResolver.unregisterContentObserver(it) } } catch (_: Exception) {}
         serviceScope.cancel()
     }
 

@@ -2,6 +2,8 @@ package com.example.domain.usecase
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraManager
@@ -17,8 +19,10 @@ import android.speech.tts.TextToSpeech
 import android.telephony.SmsManager
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.example.data.accessibility.CtrlAccessibilityService
 import com.example.data.accessibility.GestureExecutor
+import com.example.data.ocr.OcrEngine
 import com.example.data.remote.api.GeminiApiClient
 import com.example.domain.model.*
 import com.example.domain.repository.LogRepository
@@ -28,9 +32,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -50,6 +60,15 @@ class ExecuterMacroUseCase(
 
     private var ttsInstance: TextToSpeech? = null
     private var isTtsInitialized = AtomicBoolean(false)
+    private val httpClient by lazy { OkHttpClient() }
+
+    companion object {
+        // Registre partagé (process-wide) des macros en cours d'exécution,
+        // utilisé par la condition "MacroEnCoursExecution" (anti-doublon, section 8.2 catalogue).
+        private val macrosEnCours = ConcurrentHashMap<String, Boolean>()
+
+        fun estEnCoursDExecution(macroId: String): Boolean = macrosEnCours.containsKey(macroId)
+    }
 
     init {
         try {
@@ -110,6 +129,7 @@ class ExecuterMacroUseCase(
         var nbActionsReussies = 0
         var derniereErreur: String? = null
 
+        macrosEnCours[macro.id] = true
         try {
             for (action in macro.actions) {
                 executerUneAction(action, profondeur)
@@ -119,6 +139,8 @@ class ExecuterMacroUseCase(
             derniereErreur = "Arrêt d'urgence déclenché : ${stop.message}"
         } catch (e: Exception) {
             derniereErreur = e.message ?: "Erreur d'exécution"
+        } finally {
+            macrosEnCours.remove(macro.id)
         }
 
         val dureeTotale = System.currentTimeMillis() - debutMs
@@ -370,6 +392,160 @@ class ExecuterMacroUseCase(
                         }
                         context.startActivity(fallback)
                     } catch (_: Exception) {}
+                }
+            }
+
+            is ActionMacro.PasserAppel -> {
+                val numeroInterpole = interpolerVariables(action.numero).trim()
+                if (numeroInterpole.isNotBlank()) {
+                    try {
+                        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$numeroInterpole")).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
+
+            is ActionMacro.PartagerTexte -> {
+                val texteInterpole = interpolerVariables(action.texte)
+                try {
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, texteInterpole)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(Intent.createChooser(intent, "Partager via Ctrl").apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    })
+                } catch (_: Exception) {}
+            }
+
+            is ActionMacro.RemplirPressePapier -> {
+                val texteInterpole = interpolerVariables(action.texte)
+                withContext(Dispatchers.Main) {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("Ctrl", texteInterpole))
+                }
+            }
+
+            is ActionMacro.EnvoyerIntent -> {
+                if (action.action.isNotBlank()) {
+                    try {
+                        val intent = Intent(interpolerVariables(action.action)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            if (action.packageCible.isNotBlank()) setPackage(action.packageCible)
+                            if (action.extraCle.isNotBlank()) {
+                                putExtra(action.extraCle, interpolerVariables(action.extraValeur))
+                            }
+                        }
+                        context.sendBroadcast(intent)
+                    } catch (_: Exception) {}
+                }
+            }
+
+            is ActionMacro.RequeteHttp -> {
+                val urlInterpolee = interpolerVariables(action.url).trim()
+                if (urlInterpolee.isNotBlank()) {
+                    try {
+                        val corpsInterpole = interpolerVariables(action.corpsJson)
+                        val requestBuilder = Request.Builder().url(urlInterpolee)
+                        if (action.headerAuth.isNotBlank()) {
+                            requestBuilder.addHeader("Authorization", interpolerVariables(action.headerAuth))
+                        }
+                        when (action.methode) {
+                            MethodeHttp.GET -> requestBuilder.get()
+                            MethodeHttp.DELETE -> requestBuilder.delete()
+                            MethodeHttp.POST -> requestBuilder.post(
+                                corpsInterpole.toRequestBody("application/json".toMediaTypeOrNull())
+                            )
+                            MethodeHttp.PUT -> requestBuilder.put(
+                                corpsInterpole.toRequestBody("application/json".toMediaTypeOrNull())
+                            )
+                        }
+                        withContext(Dispatchers.IO) {
+                            httpClient.newCall(requestBuilder.build()).execute().use { response ->
+                                val corpsReponse = response.body?.string() ?: ""
+                                variableRepository.setValue(action.variableSortie, corpsReponse)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        variableRepository.setValue(action.variableSortie, "Erreur requête HTTP : ${e.message}")
+                    }
+                }
+            }
+
+            is ActionMacro.AnalyseJson -> {
+                try {
+                    val jsonInterpole = interpolerVariables(action.jsonSource)
+                    var courant: Any? = JSONObject(jsonInterpole)
+                    for (cle in action.cheminCle.split(".").filter { it.isNotBlank() }) {
+                        courant = (courant as? JSONObject)?.opt(cle)
+                    }
+                    variableRepository.setValue(action.variableSortie, courant?.toString() ?: "")
+                } catch (e: Exception) {
+                    variableRepository.setValue(action.variableSortie, "Erreur analyse JSON : ${e.message}")
+                }
+            }
+
+            is ActionMacro.EffacerNotifications -> {
+                try {
+                    NotificationManagerCompat.from(context).cancelAll()
+                } catch (_: Exception) {}
+            }
+
+            is ActionMacro.OuvrirJournalAppels -> {
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("content://call_log/calls")).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {}
+            }
+
+            is ActionMacro.ManipulerListe -> {
+                val brute = variableRepository.getValue(action.nomListe) ?: ""
+                val elements: MutableList<String> = if (brute.isBlank()) mutableListOf() else brute.split("||").toMutableList()
+                val argumentInterpole = interpolerVariables(action.argument)
+                val resultat = when (action.operation) {
+                    OperationListe.AJOUTER -> {
+                        elements.add(argumentInterpole)
+                        variableRepository.setValue(action.nomListe, elements.joinToString("||"))
+                        elements.joinToString("||")
+                    }
+                    OperationListe.SUPPRIMER_INDEX -> {
+                        val idx = argumentInterpole.toIntOrNull()
+                        if (idx != null && idx in elements.indices) elements.removeAt(idx)
+                        variableRepository.setValue(action.nomListe, elements.joinToString("||"))
+                        elements.joinToString("||")
+                    }
+                    OperationListe.OBTENIR_INDEX -> {
+                        val idx = argumentInterpole.toIntOrNull()
+                        if (idx != null && idx in elements.indices) elements[idx] else ""
+                    }
+                    OperationListe.LONGUEUR -> elements.size.toString()
+                    OperationListe.JOINDRE -> elements.joinToString(argumentInterpole.ifBlank { ", " })
+                }
+                variableRepository.setValue(action.variableSortie, resultat)
+            }
+
+            is ActionMacro.VerifierTexteEcran -> {
+                try {
+                    val racine = CtrlAccessibilityService.getService()?.rootInActiveWindow
+                    if (racine != null) {
+                        val ocrEngine = OcrEngine()
+                        val textes = ocrEngine.extraireTextesNode(racine)
+                        val trouve = ocrEngine.verifierPresenceTexte(textes, action.motifRegex)
+                        val correspondance = textes.firstOrNull {
+                            try { Regex(action.motifRegex, RegexOption.IGNORE_CASE).containsMatchIn(it) } catch (_: Exception) { false }
+                        } ?: ""
+                        variableRepository.setValue(action.variableTrouve, trouve.toString())
+                        variableRepository.setValue(action.variableContenu, correspondance)
+                    } else {
+                        variableRepository.setValue(action.variableTrouve, "false")
+                    }
+                } catch (e: Exception) {
+                    variableRepository.setValue(action.variableTrouve, "false")
                 }
             }
 

@@ -29,7 +29,7 @@ data class MacroBuilderUiState(
 class MacroBuilderViewModel(application: Application) : AndroidViewModel(application) {
 
     private val dao = CtrlDatabase.getInstance(application).ctrlDao()
-    private val macroRepository = MacroRepositoryImpl(dao)
+    private val macroRepository = MacroRepositoryImpl(dao, application)
 
     private val _uiState = MutableStateFlow(MacroBuilderUiState())
     val uiState: StateFlow<MacroBuilderUiState> = _uiState.asStateFlow()

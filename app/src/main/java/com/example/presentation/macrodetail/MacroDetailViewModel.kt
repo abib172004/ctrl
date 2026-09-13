@@ -29,7 +29,7 @@ class MacroDetailViewModel(
 ) : AndroidViewModel(application) {
 
     private val dao = CtrlDatabase.getInstance(application).ctrlDao()
-    private val macroRepository = MacroRepositoryImpl(dao)
+    private val macroRepository = MacroRepositoryImpl(dao, application)
     private val variableRepository = VariableRepositoryImpl(dao)
     private val logRepository = LogRepositoryImpl(dao)
     private val evaluerUseCase = EvaluerConditionsUseCase(application, variableRepository)

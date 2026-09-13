@@ -60,6 +60,15 @@ object JsonConverters {
                 json.put("appName", trigger.appName)
                 json.put("ouverte", trigger.estOuverte)
             }
+            is Trigger.ContenuEcran -> {
+                json.put("type", "CONTENU_ECRAN")
+                json.put("motifRegex", trigger.motifRegex)
+                json.put("appSource", trigger.appSource ?: "")
+            }
+            is Trigger.ClicUI -> {
+                json.put("type", "CLIC_UI")
+                json.put("texteCible", trigger.texteCible)
+            }
             is Trigger.NotificationRecue -> {
                 json.put("type", "NOTIFICATION_RECUE")
                 json.put("appSource", trigger.appSource ?: "")
@@ -86,6 +95,69 @@ object JsonConverters {
             }
             is Trigger.Manuel -> {
                 json.put("type", "MANUEL")
+            }
+            is Trigger.AppelSortant -> {
+                json.put("type", "APPEL_SORTANT")
+                json.put("numero", trigger.numeroFiltre ?: "")
+            }
+            is Trigger.AppelManque -> {
+                json.put("type", "APPEL_MANQUE")
+                json.put("numero", trigger.numeroFiltre ?: "")
+            }
+            is Trigger.AppelTermine -> {
+                json.put("type", "APPEL_TERMINE")
+            }
+            is Trigger.SmsEnvoye -> {
+                json.put("type", "SMS_ENVOYE")
+                json.put("destinataire", trigger.destinataireFiltre ?: "")
+            }
+            is Trigger.TemperatureBatterie -> {
+                json.put("type", "TEMP_BATTERIE")
+                json.put("seuilCelsius", trigger.seuilCelsius)
+                json.put("superieur", trigger.superieur)
+            }
+            is Trigger.EconomiseurBatterie -> {
+                json.put("type", "ECO_BATTERIE")
+                json.put("actif", trigger.actif)
+            }
+            is Trigger.VpnState -> {
+                json.put("type", "VPN_STATE")
+                json.put("actif", trigger.actif)
+            }
+            is Trigger.UsbConnexion -> {
+                json.put("type", "USB_CONNEXION")
+                json.put("connecte", trigger.connecte)
+            }
+            is Trigger.HotspotState -> {
+                json.put("type", "HOTSPOT_STATE")
+                json.put("actif", trigger.actif)
+            }
+            is Trigger.CapteurLuminosite -> {
+                json.put("type", "CAPTEUR_LUMINOSITE")
+                json.put("seuilLux", trigger.seuilLux)
+                json.put("inferieur", trigger.inferieur)
+            }
+            is Trigger.CapteurProximite -> {
+                json.put("type", "CAPTEUR_PROXIMITE")
+                json.put("proche", trigger.proche)
+            }
+            is Trigger.OrientationEcran -> {
+                json.put("type", "ORIENTATION_ECRAN")
+                json.put("portrait", trigger.portrait)
+            }
+            is Trigger.EcranDeverrouille -> {
+                json.put("type", "ECRAN_DEVERROUILLE")
+            }
+            is Trigger.TorcheState -> {
+                json.put("type", "TORCHE_STATE")
+                json.put("allumee", trigger.allumee)
+            }
+            is Trigger.ModeSilencieux -> {
+                json.put("type", "MODE_SILENCIEUX")
+                json.put("actif", trigger.actif)
+            }
+            is Trigger.PressePapierModifie -> {
+                json.put("type", "PRESSE_PAPIER")
             }
         }
         return json.toString()
@@ -139,6 +211,13 @@ object JsonConverters {
                     appName = json.optString("appName", "Application"),
                     estOuverte = json.optBoolean("ouverte", true)
                 )
+                "CONTENU_ECRAN" -> Trigger.ContenuEcran(
+                    motifRegex = json.optString("motifRegex"),
+                    appSource = json.optString("appSource").ifEmpty { null }
+                )
+                "CLIC_UI" -> Trigger.ClicUI(
+                    texteCible = json.optString("texteCible")
+                )
                 "NOTIFICATION_RECUE" -> Trigger.NotificationRecue(
                     appSource = json.optString("appSource").ifEmpty { null },
                     motCle = json.optString("motCle").ifEmpty { null }
@@ -156,6 +235,50 @@ object JsonConverters {
                 "VAR_CHANGE" -> Trigger.ChangementVariable(
                     nomVariable = json.optString("nomVariable")
                 )
+                "APPEL_SORTANT" -> Trigger.AppelSortant(
+                    numeroFiltre = json.optString("numero").ifEmpty { null }
+                )
+                "APPEL_MANQUE" -> Trigger.AppelManque(
+                    numeroFiltre = json.optString("numero").ifEmpty { null }
+                )
+                "APPEL_TERMINE" -> Trigger.AppelTermine()
+                "SMS_ENVOYE" -> Trigger.SmsEnvoye(
+                    destinataireFiltre = json.optString("destinataire").ifEmpty { null }
+                )
+                "TEMP_BATTERIE" -> Trigger.TemperatureBatterie(
+                    seuilCelsius = json.optInt("seuilCelsius", 40),
+                    superieur = json.optBoolean("superieur", true)
+                )
+                "ECO_BATTERIE" -> Trigger.EconomiseurBatterie(
+                    actif = json.optBoolean("actif", true)
+                )
+                "VPN_STATE" -> Trigger.VpnState(
+                    actif = json.optBoolean("actif", true)
+                )
+                "USB_CONNEXION" -> Trigger.UsbConnexion(
+                    connecte = json.optBoolean("connecte", true)
+                )
+                "HOTSPOT_STATE" -> Trigger.HotspotState(
+                    actif = json.optBoolean("actif", true)
+                )
+                "CAPTEUR_LUMINOSITE" -> Trigger.CapteurLuminosite(
+                    seuilLux = json.optInt("seuilLux", 10),
+                    inferieur = json.optBoolean("inferieur", true)
+                )
+                "CAPTEUR_PROXIMITE" -> Trigger.CapteurProximite(
+                    proche = json.optBoolean("proche", true)
+                )
+                "ORIENTATION_ECRAN" -> Trigger.OrientationEcran(
+                    portrait = json.optBoolean("portrait", true)
+                )
+                "ECRAN_DEVERROUILLE" -> Trigger.EcranDeverrouille()
+                "TORCHE_STATE" -> Trigger.TorcheState(
+                    allumee = json.optBoolean("allumee", true)
+                )
+                "MODE_SILENCIEUX" -> Trigger.ModeSilencieux(
+                    actif = json.optBoolean("actif", true)
+                )
+                "PRESSE_PAPIER" -> Trigger.PressePapierModifie()
                 else -> Trigger.Manuel()
             }
         } catch (_: Exception) {
@@ -235,6 +358,36 @@ object JsonConverters {
                 c.sousConditions.forEach { sousArr.put(conditionToJsonObject(it)) }
                 json.put("sousConditions", sousArr)
             }
+            is Condition.VariableComparaison -> {
+                json.put("type", "VAR_COMPARAISON")
+                json.put("nom", c.nomVariable)
+                json.put("operateur", c.operateur.name)
+                json.put("valeur", c.valeur)
+            }
+            is Condition.VpnActif -> {
+                json.put("type", "VPN_ACTIF")
+                json.put("actif", c.doitEtreActif)
+            }
+            is Condition.EconomiseurBatterieActif -> {
+                json.put("type", "ECO_BATTERIE_ACTIF")
+                json.put("actif", c.doitEtreActif)
+            }
+            is Condition.AppareilVerrouille -> {
+                json.put("type", "APPAREIL_VERROUILLE")
+                json.put("verrouille", c.doitEtreVerrouille)
+            }
+            is Condition.JourDuMois -> {
+                json.put("type", "JOUR_DU_MOIS")
+                val jArr = JSONArray()
+                c.jours.forEach { jArr.put(it) }
+                json.put("jours", jArr)
+            }
+            is Condition.MacroEnCoursExecution -> {
+                json.put("type", "MACRO_EN_COURS")
+                json.put("macroId", c.macroId)
+                json.put("nomMacro", c.nomMacro)
+                json.put("enCours", c.doitEtreEnCours)
+            }
         }
         return json
     }
@@ -308,6 +461,31 @@ object JsonConverters {
                 }
                 Condition.Compose(operateur = op, sousConditions = sousList)
             }
+            "VAR_COMPARAISON" -> Condition.VariableComparaison(
+                nomVariable = json.optString("nom"),
+                operateur = try { OperateurComparaison.valueOf(json.optString("operateur", "EGAL")) } catch (_: Exception) { OperateurComparaison.EGAL },
+                valeur = json.optString("valeur")
+            )
+            "VPN_ACTIF" -> Condition.VpnActif(
+                doitEtreActif = json.optBoolean("actif", true)
+            )
+            "ECO_BATTERIE_ACTIF" -> Condition.EconomiseurBatterieActif(
+                doitEtreActif = json.optBoolean("actif", true)
+            )
+            "APPAREIL_VERROUILLE" -> Condition.AppareilVerrouille(
+                doitEtreVerrouille = json.optBoolean("verrouille", true)
+            )
+            "JOUR_DU_MOIS" -> {
+                val jArr = json.optJSONArray("jours")
+                val jList = mutableListOf<Int>()
+                if (jArr != null) for (j in 0 until jArr.length()) jList.add(jArr.getInt(j))
+                Condition.JourDuMois(jours = jList)
+            }
+            "MACRO_EN_COURS" -> Condition.MacroEnCoursExecution(
+                macroId = json.optString("macroId"),
+                nomMacro = json.optString("nomMacro"),
+                doitEtreEnCours = json.optBoolean("enCours", false)
+            )
             else -> null
         }
     }
@@ -445,6 +623,58 @@ object JsonConverters {
             is ActionMacro.ArretUrgence -> {
                 json.put("type", "ARRET_URGENCE")
                 json.put("raison", a.raison)
+            }
+            is ActionMacro.PasserAppel -> {
+                json.put("type", "PASSER_APPEL")
+                json.put("numero", a.numero)
+            }
+            is ActionMacro.PartagerTexte -> {
+                json.put("type", "PARTAGER_TEXTE")
+                json.put("texte", a.texte)
+            }
+            is ActionMacro.RemplirPressePapier -> {
+                json.put("type", "PRESSE_PAPIER_ACTION")
+                json.put("texte", a.texte)
+            }
+            is ActionMacro.EnvoyerIntent -> {
+                json.put("type", "ENVOYER_INTENT")
+                json.put("action", a.action)
+                json.put("package", a.packageCible)
+                json.put("extraCle", a.extraCle)
+                json.put("extraValeur", a.extraValeur)
+            }
+            is ActionMacro.RequeteHttp -> {
+                json.put("type", "REQUETE_HTTP")
+                json.put("url", a.url)
+                json.put("methode", a.methode.name)
+                json.put("corps", a.corpsJson)
+                json.put("auth", a.headerAuth)
+                json.put("sortie", a.variableSortie)
+            }
+            is ActionMacro.AnalyseJson -> {
+                json.put("type", "ANALYSE_JSON")
+                json.put("source", a.jsonSource)
+                json.put("cle", a.cheminCle)
+                json.put("sortie", a.variableSortie)
+            }
+            is ActionMacro.EffacerNotifications -> {
+                json.put("type", "EFFACER_NOTIFS")
+            }
+            is ActionMacro.OuvrirJournalAppels -> {
+                json.put("type", "OUVRIR_JOURNAL_APPELS")
+            }
+            is ActionMacro.ManipulerListe -> {
+                json.put("type", "MANIP_LISTE")
+                json.put("nom", a.nomListe)
+                json.put("operation", a.operation.name)
+                json.put("argument", a.argument)
+                json.put("sortie", a.variableSortie)
+            }
+            is ActionMacro.VerifierTexteEcran -> {
+                json.put("type", "VERIF_TEXTE_ECRAN")
+                json.put("motif", a.motifRegex)
+                json.put("varTrouve", a.variableTrouve)
+                json.put("varContenu", a.variableContenu)
             }
         }
         return json
@@ -594,6 +824,46 @@ object JsonConverters {
             )
             "ARRET_URGENCE" -> ActionMacro.ArretUrgence(
                 raison = json.optString("raison", "Arrêt demandé")
+            )
+            "PASSER_APPEL" -> ActionMacro.PasserAppel(
+                numero = json.optString("numero")
+            )
+            "PARTAGER_TEXTE" -> ActionMacro.PartagerTexte(
+                texte = json.optString("texte")
+            )
+            "PRESSE_PAPIER_ACTION" -> ActionMacro.RemplirPressePapier(
+                texte = json.optString("texte")
+            )
+            "ENVOYER_INTENT" -> ActionMacro.EnvoyerIntent(
+                action = json.optString("action"),
+                packageCible = json.optString("package"),
+                extraCle = json.optString("extraCle"),
+                extraValeur = json.optString("extraValeur")
+            )
+            "REQUETE_HTTP" -> ActionMacro.RequeteHttp(
+                url = json.optString("url", "https://"),
+                methode = try { MethodeHttp.valueOf(json.optString("methode", "GET")) } catch (_: Exception) { MethodeHttp.GET },
+                corpsJson = json.optString("corps"),
+                headerAuth = json.optString("auth"),
+                variableSortie = json.optString("sortie", "reponse_http")
+            )
+            "ANALYSE_JSON" -> ActionMacro.AnalyseJson(
+                jsonSource = json.optString("source"),
+                cheminCle = json.optString("cle"),
+                variableSortie = json.optString("sortie", "valeur_json")
+            )
+            "EFFACER_NOTIFS" -> ActionMacro.EffacerNotifications()
+            "OUVRIR_JOURNAL_APPELS" -> ActionMacro.OuvrirJournalAppels()
+            "MANIP_LISTE" -> ActionMacro.ManipulerListe(
+                nomListe = json.optString("nom", "ma_liste"),
+                operation = try { OperationListe.valueOf(json.optString("operation", "AJOUTER")) } catch (_: Exception) { OperationListe.AJOUTER },
+                argument = json.optString("argument"),
+                variableSortie = json.optString("sortie", "resultat_liste")
+            )
+            "VERIF_TEXTE_ECRAN" -> ActionMacro.VerifierTexteEcran(
+                motifRegex = json.optString("motif"),
+                variableTrouve = json.optString("varTrouve", "texte_trouve"),
+                variableContenu = json.optString("varContenu", "contenu_ecran")
             )
             else -> null
         }

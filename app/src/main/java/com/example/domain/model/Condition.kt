@@ -70,6 +70,50 @@ sealed class Condition {
         override val label = "Variable '$nomVariable' == '$valeurAttendue'"
     }
 
+    data class VariableComparaison(
+        val nomVariable: String,
+        val operateur: OperateurComparaison = OperateurComparaison.EGAL,
+        val valeur: String = ""
+    ) : Condition() {
+        override val label = "Variable '$nomVariable' ${operateur.symbole} '$valeur'"
+    }
+
+    data class VpnActif(
+        val doitEtreActif: Boolean = true
+    ) : Condition() {
+        override val label = if (doitEtreActif) "VPN actif" else "VPN inactif"
+    }
+
+    data class EconomiseurBatterieActif(
+        val doitEtreActif: Boolean = true
+    ) : Condition() {
+        override val label = if (doitEtreActif) "Économiseur de batterie actif" else "Économiseur de batterie inactif"
+    }
+
+    data class AppareilVerrouille(
+        val doitEtreVerrouille: Boolean = true
+    ) : Condition() {
+        override val label = if (doitEtreVerrouille) "Appareil verrouillé" else "Appareil déverrouillé"
+    }
+
+    data class JourDuMois(
+        val jours: List<Int> = listOf(1)
+    ) : Condition() {
+        override val label = "Jour du mois : ${jours.joinToString(", ")}"
+    }
+
+    data class MacroEnCoursExecution(
+        val macroId: String,
+        val nomMacro: String = "",
+        val doitEtreEnCours: Boolean = false
+    ) : Condition() {
+        override val label = if (doitEtreEnCours) {
+            "'$nomMacro' est en cours d'exécution"
+        } else {
+            "'$nomMacro' n'est pas en cours d'exécution (anti-doublon)"
+        }
+    }
+
     data class ServiceAccessibiliteActif(
         val requis: Boolean = true
     ) : Condition() {
@@ -102,4 +146,12 @@ enum class OperateurLogique {
     OU,
     NON,
     OU_EXCLUSIF
+}
+
+enum class OperateurComparaison(val symbole: String) {
+    EGAL("=="),
+    DIFFERENT("!="),
+    SUPERIEUR(">"),
+    INFERIEUR("<"),
+    CONTIENT("contient")
 }
